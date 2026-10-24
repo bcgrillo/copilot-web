@@ -6,6 +6,51 @@ Web app (POC rápida) con gestor de sesiones + ventana de chat que envía mensaj
 
 ## Estado
 - Branch: `feature/mcp-helper` (poc = `feature/copilot-web-poc`; única diferencia: MCP)
+- **v0.0.32** (header móvil + ajustes): header en móvil con logo h-8 a la
+  izquierda (igual que el sidebar, sin salto al abrir) y menú de sesiones h-8 a
+  la derecha; lápiz pegado al título y menos sutil (foreground/60). Selector de
+  acento en grid 2×8 (16 tonos, orden por hue, +amarillo). Punto del favicon
+  eliminado (dobla con la Notification del navegador; quedan badges de sidebar +
+  notificación oculta). Quirk: fork EAGAIN transitorio en el contenedor →
+  reintentos; builds solo con el server parado.
+- **v0.0.31** (badges + notifs + header rename): "pendiente de ver" por sesión —
+  contador rojo en el sidebar cuando el turno termina o llega un permiso y la
+  sesión no se está mirando (activa+visible); se limpia al visitar/enviar. Título
+  de pestaña `(N) Nombre sesión` con "Beta" fuera; punto rojo en el favicon
+  dinámico; Notification API opt-in (toggle en Config; localStorage `cwUnread` +
+  `cwNotify`; clic en la notificación enfoca la ventana). Header del chat: `#id`
+  sin "sess" y renombrado desde el header (lápiz desktop / tocar el título en
+  móvil). Ops post-restart: `curl :3222` 000 SIEMPRE (daemon TCP JSON-RPC, no
+  HTTP; vivo = EADDRINUSE en foreground); relanzar web con
+  `cd copilot-web && npm run serve -- --no-daemon --cwd /workspace --model
+  default` (reusa daemon 910/921, sesiones intactas); NUNCA lanzar el serve
+  desde /workspace (npm ENOENT).
+- **v0.0.25.3** (fixes beta): móvil — el cwd/rama del status-bar se ocultan por
+  debajo de `sm` (sin espacio; el modelo sigue a la derecha) y el textarea baja
+  a 0.9rem en móvil (`text-[0.9rem] md:text-sm`) para que el placeholder quepe
+  en 1 línea. Dark real: `@custom-variant dark (&:where(.dark, .dark *))` en
+  globals.css — antes las variantes `dark:` iban por `prefers-color-scheme`
+  (default v4) y un móvil con SO claro + web en dark manual perdía
+  `dark:prose-invert` (texto oscuro sobre oscuro); el CSS compilado ahora es
+  `.dark\:prose-invert:where(.dark,.dark *)`. README (en/es): límite de auth
+  reformulado con terminología correcta (authN/authZ, single-user roadmap).
+  Quirk: build falla con pool de threads (pids.max=256 del contenedor, 46
+  zombies del init) → parar el server web durante el build y relanzar.
+- **v0.0.25.2** (d8afb4a): About + Config como popups (backdrop translúcido
+  claro/oscuro sobre el chat, Esc/backdrop/✕). Config: idioma (auto/navegador,
+  EN, ES — cambio en vivo), modo (auto/claro/oscuro) y COLOR del acento (15
+  paletas, brillo derivado por tema vía `--emerald`; data-accent aplicado
+  pre-paint en layout, persiste en localStorage). Daemon ACP: estado en vivo
+  GET `/api/daemon` (pid/puerto/modelo vía /proc) + botón de reinicio POST
+  `{action:"restart"}` que matan daemon+helper huérfanos y respawn con argv
+  fiel al launcher (--model + helper MCP + allow-tool, env saneado) — E2E:
+  daemon reaparece con helper y acepta session/new. NOTA: el POST necesita
+  trailing slash (`/api/daemon/`) por el redirect 308 de Next (fetch del
+  navegador lo sigue solo). Footer: ayuda abre AboutModal; botón settings
+  abre SettingsModal. `/about` (ruta) reusa AboutContent. **PRUEBA reversible
+  del logo**: sidebar/about usan `<Logo text-emerald>` SIN badge (antes:
+  badge emerald h-8 + logo h-6 blanco); si no gusta, volver en Sidebar.tsx
+  y About.tsx a `span bg-emerald + Logo h-6 text-primary-foreground`.
 - **v0.0.25**: branding + tema auto + About. Logo SVG propio
   (renombrado a `copilot-web/public/copilot-web.svg`, `Logo.tsx` inline con
   fill currentColor; sustituye al robot en sidebar + EmptyState), favicon
@@ -16,6 +61,19 @@ Web app (POC rápida) con gestor de sesiones + ventana de chat que envía mensaj
   disclaimer. Build/tsc/E2E curl verificados. **Merge a `dev` hecho y
   pusheado** (`737f986`, v0.0.17–v0.0.25 + v0.0.25; quedamos con la rama MCP
   helper; poc queda como archivo) — siguiente fase: pipelines, instalador.
+- **To-do (fase pipelines/tests)** — añadir suite de tests del proyecto y
+  workflow de CI en GitHub Actions, con badge `tests` dinámico en los READMEs
+  (hoy existen estáticos "pending" en README.md y README.es.md junto al resto
+  de badges: license/beta/issues/release). Incluir en los próximos trabajos de
+  pipelines (release.yml ya está; falta CI + instalador).
+- **To-do (auth básica)** — implementar un sistema de autenticación básico
+  (authN/authZ, usuario único) para la UI y las API routes; hoy la web abre sin
+  barreras y cualquiera que alcance el puerto tiene acceso completo al Copilot.
+  Candidatos mínimos: token compartido por env (--auth-token) + cookie
+  HttpOnly con middleware de Next, o Basic Auth en el launcher. Documentado ya
+  en README (Known limits) con la nota de "bind to localhost / proxy" +
+  roadmap. Contexto: la exposición pública de esta POC hoy la protege el login
+  de CodePods, no la propia app.
 - **v0.0.24**: card de permiso renderiza las opciones reales del agente
   (allow_once/allow_always/reject_once…; botones por kind, rechazar izq rojo /
   permitir dcha verde, frase arriba + botones debajo en línea con opciones),
@@ -225,3 +283,79 @@ ficheros distintos re-pregunta cada vez. Idea: que el puente, al elegir
 allow_always en un permiso kind=shell, memorice en RAM (PRINCIPIO 0) un
 prefijo/token del comando y auto-respondiese allow_always en futuras
 request_permission coincidentes sin card. Diseñar alcance y UX antes.
+
+### Lote 8-13 (v0.0.25.4, feature/mcp-helper) — UI beta rápida (completado)
+- (8) ✔ Versión sutil en footer del sidebar (izquierda, mono 10px muted-foreground/70, `v{pkg.version}` import de package.json).
+- (9) ✔ Sidebar en móvil: full ancho (w-full → sm:w-72) + fondo más claro traslúcido igual que el popup (bg-background/80 backdrop-blur-md → sm:bg-card/50 sm:backdrop-blur-none).
+- (10) ✔ ModalShell fullscreen en móvil (items-stretch, card sin radius/border/padding reducido, scroll; sm: restaura popup centrado 85dvh max-w-lg) — afecta a About y Settings por igual.
+- (11) ✔ Botón de envío en color de tema (bg-emerald, aplica el acento data-accent elegido).
+- (12) ✔ Burbujas del usuario con gris sutil por tema en vez de blanco/negro: token nuevo --user-bubble (#e4e4e7 light / #2c2c31 dark) mapeado a @theme inline → bg-user-bubble, texto text-foreground; chip de adjunto ajustado a bg-foreground/10.
+- (13) ✔ To-dos: 'session-search' (buscador de sesiones front) + 'interleaved-events' (mensajes intercalados estilo gh cli durante procesos) en todos_v2.
+- ✔ tsc + build verdes (build con web parada, quirk pids conocido); restart web verificado: / 200, /about/ 200, favicon.svg 200.
+- Pendiente: verificación visual del usuario en móvil real; logo trial sigue abierto.
+
+### Versión 3 dígitos + roadmap público (24/10/2026)
+- ✔ Regla de versionado (decisions.md): siempre 3 dígitos; 0.0.25.4 ≡ v0.0.26;
+  beta oficial = v0.1.x. package.json bumped a 0.0.26 (footer/favicon se
+  actualizan solos vía pkg.version).
+- ✔ Roadmap (to-dos) en README.md y README.es.md (auth, CI pipelines + badge
+  tests, session search, interleaved events, shell allow_always memory), con
+  nota de que ninguno bloquea la beta. To-do 'ci-tests-badge' registrado
+  (faltaba en todos_v2).
+- Badges de release de ambos READMEs → v0.0.26.
+
+### Lote móvil v0.0.27 (feature/mcp-helper) — avatar/burbujas/drawer (completado)
+- ✔ Chat móvil: avatar del asistente ENCIMA del contenido (flex-col → sm:flex-row) en
+  AssistantMessage, LiveBlock y placeholder de puntos; también el comando ❯ ya era columna.
+- ✔ Burbujas más anchas: usuario 80%→90%; asistente/LiveBlock 85%→90%.
+- ✔ Drawer móvil: arriba a la derecha SOLO el close (X, md:hidden); el botón + del header
+  solo queda en desktop (hidden md:flex) y ahora con color del tema (bg-emerald,
+  igual que el botón de enviar).
+- ✔ FAB "+" flotante en móvil (h-14 rounded-full bg-emerald + accent, sombra,
+  safe-area-inset-bottom, sobre el footer del sidebar, md:hidden) sustituye al del header.
+- ✔ Corrección del usuario: el status-bar en móvil NO oculta cwd/rama, solo el label
+  "Working directory:" (la ruta + [⎇rama] se ven como en desktop, truncadas).
+- ✔ build ritual OK con limpieza de 5 helpers ask-user huérfanos (todos hijos del daemon
+  vivo 116569; NO son leaks de daemons muertos: 1 por turno/pregunta, se quedan Z al
+  matarlos). Web arriba: /, /about/, favicon 200.
+- Idea evaluada (solo razonar): favicon dinámico con acento del tema → viable vía
+  data-URL en cliente (Opción B), pendiente de decisión del usuario.
+
+### v0.0.28 (feature/mcp-helper) — verde semántico + favicon dinámico (completado)
+- ✔ Botones de la card de permisos: permitir (esta vez/siempre) pasan de bg-emerald
+  (token ligado al acento → dejaba de ser verde con otros temas) a bg-emerald-500
+  fijo; rechazar sigue rojo fijo. Verde/rojo semánticos independientes del acento.
+- ✔ FAVICON DINÁMICO con el tema (prueba pedida, Opción B data-URL): layout.tsx lee
+  el path d de public/favicon.svg (fs en runtime) + inyecta en themeInit el mapa de
+  15 acentos (light 500/dark 400 de ACCENTS) → setFav genera data-URL SVG y cambia
+  link[rel=icon] (creándolo si faltase); el estático ?v= queda como fallback.
+  Reacción en vivo: cambios de sistema (mq listener), ciclo de tema del footer y
+  acento en Config vía window.__cwApplyTheme (syncThemeAndFavicon en lib/cw.ts).
+  accents.ts pierde "use client" (módulo puro compartido por server/client).
+  Validado en Node: data-URL ~11.4KB parseable, fills correctos (rose claro,
+  emerald oscuro #34d399).
+
+### v0.0.29 (feature/mcp-helper) — fix favicon + foco al composer (completado)
+- ✔ Bug favicon: al hidratar, Next pisaba el link[rel=icon] gestionado por React
+  (href data-URL → estático ?v=, icono volvía a blanco). Fix: link PROPIO
+  (#cw-fav-dyn) appendeado al final (el último rel=icon gana) + MutationObserver
+  que lo mantiene último si Next reinsterta iconos. El estático queda como
+  fallback sin JS.
+- ✔ Nueva sesión: foco automático al composer (focusNonce state en page.tsx que
+  sube en createSession; Chat lo observa y hace inputRef.focus()).
+- ✔ Limpieza operativa: ~24 serve/next-server huérfanos acumulados agotaban
+  pids.max (256) → build fallaba (SWC SIGABRT). Liberados PIDs y build OK.
+  Nota: el init del contenedor es `tail` y no reaparce zombies (78 acumulados).
+- Verificado: / 200, /about/ 200, favicon.svg 200; script cw-fav-dyn ×2 +
+  MutationObserver ×3 en HTML servido.
+
+### v0.0.30 (feature/mcp-helper) — banner busyPerm fuera + Check verde fijo (completado)
+- ✔ Banner "La sesión espera tu respuesta..." borrado: la card de permiso ya
+  explica el estado; el 429-busy solo re-muestra la card y encola el mensaje
+  (retryRef) sin texto extra. Claves err.busyPerm eliminadas de i18n (en+es).
+- ✔ Chip de tool completada: icono Check ahora text-emerald-500 FIJO (no sigue
+  el acento), igual que los botones allow (X rojo ya era fijo).
+- ✔ Régimen post-restart #5: el freeze mató web+daemon; relanzado todo con el
+  launcher (helper JSON regenerado solo, daemon con --cwd /workspace --model
+  default). Nota diagnóstica: curl a :3222 da 000 SIEMPRE (TCP crudo JSON-RPC,
+  no HTTP) — no es señal de muerte; EADDRINUSE en copilot foreground = vivo.

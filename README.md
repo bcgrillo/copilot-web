@@ -1,9 +1,28 @@
-# copilot-web — ACP web adapter for Copilot CLI
+<p align="center">
+  <a href="https://github.com/lualab-xyz/copilot-web">
+    <picture>
+      <source srcset="assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
+      <img src="assets/logo-light.svg" alt="copilot-web logo" width="120" height="120">
+    </picture>
+  </a>
+</p>
 
-**copilot-web** is a minimal, self-hosted web interface for the
-[GitHub Copilot CLI](https://github.com/github/copilot-cli). It talks to the
-Copilot CLI over **ACP** (the Agent Client Protocol of `copilot --acp`), keeping
-sessions, context and permissions exactly where they live — in the CLI process.
+<p align="center"><strong>copilot-web</strong> — a minimal, self-hosted web interface for the<br><a href="https://github.com/github/copilot-cli">GitHub Copilot CLI</a>, over ACP.</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square" /></a>
+  <a href="https://github.com/lualab-xyz/copilot-web/actions"><img alt="Tests" src="https://img.shields.io/badge/tests-pending-lightgrey.svg?style=flat-square" /></a>
+  <a href="https://github.com/lualab-xyz/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/status-beta-orange.svg?style=flat-square" /></a>
+  <a href="https://github.com/lualab-xyz/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/lualab-xyz/copilot-web?style=flat-square&label=issues" /></a>
+  <a href="https://github.com/lualab-xyz/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.0.32-blue.svg?style=flat-square" /></a>
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> |
+  <a href="README.es.md">Español</a>
+</p>
+
+---
 
 > **Not affiliated** — this is an unofficial community project. It is not
 > affiliated with, endorsed by, or sponsored by GitHub, Microsoft or OpenAI.
@@ -87,6 +106,12 @@ Pass your own flags to restrict the agent further.
 browser ⇄ Next.js web server (:3100) ⇄ copilot --acp daemon (:3222) ⇄ GitHub Copilot
 ```
 
+Deploying under a **URL path prefix** (e.g. behind a proxy that strips a public
+path) instead of `/` is supported via `ASSET_PREFIX` +
+`NEXT_PUBLIC_BASE_PATH` — see
+[docs/base-path-deployment.md](docs/base-path-deployment.md). It becomes a
+plain `--base-path` launcher flag in a future release.
+
 One ACP session per web session; switching sessions in the sidebar switches
 ACP sessions transparently (agent sessions live in the daemon process and are
 replayable with `session/load` while it is up). The status bar under the
@@ -106,8 +131,25 @@ is what the Copilot CLI itself already manages.
   transcript itself is fully replayed.
 - The dashboard is only one session deep in the CLI (`/session rename`) and
   errors from the CLI surface verbatim.
-- No authentication on the web UI — bind to localhost or put it behind your
-  own proxy.
+- **No authentication or authorization (authN/authZ)** on the web UI yet — anyone
+  who can reach the port gets full Copilot access. A basic single-user auth layer
+  is on the roadmap; until then, bind to localhost or put it behind your own proxy.
+
+## Roadmap
+
+Planned work (none of it blocks the beta launch; versions stay 3-digit semver,
+`v0.0.x` while in beta — the official beta release will be `v0.1.x`):
+
+- **Basic auth (authN/authZ)** — single-user login for the web UI.
+- **CI pipelines (GitHub Actions)** — lint/type-check/build plus a test suite,
+  wired to the tests badge above.
+- **Session search** — filter sessions by title from the sidebar.
+- **Interleaved live events** — show progress/events inline mid-turn, in the
+  spirit of the GitHub CLI.
+- **Shell `allow_always` memory** — remember approved shell command prefixes
+  for the session instead of asking again per exact command.
+- **File edit/creation rendering** — show file creation and edits
+  like the Copilot CLI does (content previews and unified diffs).
 
 ## License
 

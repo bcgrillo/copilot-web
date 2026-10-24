@@ -17,6 +17,8 @@ type Props = {
   sessions: SessionSummary[];
   activeId: string | null;
   runningIds: Record<string, boolean>;
+  /** pendientes de ver por sesión (turno terminado/permiso): badge numérico */
+  unread?: Record<string, number>;
   onSelect: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, name: string) => void;
@@ -30,6 +32,7 @@ export default function Sidebar({
   sessions,
   activeId,
   runningIds,
+  unread = {},
   onSelect,
   onCreate,
   onRename,
@@ -59,13 +62,12 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`h-full w-72 shrink-0 flex-col border-r border-border bg-card/50 ${className}`}
+      className={`h-full w-full shrink-0 flex-col border-r border-border bg-background/80 backdrop-blur-md sm:w-72 sm:bg-card/50 sm:backdrop-blur-none ${className}`}
     >
       <div className="flex items-center justify-between px-4 py-4">
         <div className="flex items-center gap-2 text-sm font-semibold">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald text-primary-foreground">
-            <Logo className="h-5 w-5 text-white" />
-          </span>
+          {/* PRUEBA reversible (v0.0.25.2): logo sin badge, coloreado con el acento */}
+          <Logo className="h-8 w-8 text-emerald" />
           Copilot Web
           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             Beta
@@ -81,9 +83,11 @@ export default function Sidebar({
               <X className="h-4 w-4" />
             </button>
           )}
+          {/* nueva sesión en el header: solo desktop, con color del tema;
+              en móvil es el FAB */}
           <button
             onClick={onCreate}
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-emerald text-primary-foreground transition-opacity hover:opacity-90 md:flex"
             title={t("sidebar.newSession")}
           >
             <Plus className="h-4 w-4" />
@@ -132,6 +136,13 @@ export default function Sidebar({
                 <span className="flex-1 truncate">{s.name}</span>
               )}
 
+              {/* pendiente de ver: turno terminado/permiso fuera de vista */}
+              {unread[s.id] ? (
+                <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
+                  {unread[s.id]}
+                </span>
+              ) : null}
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -173,6 +184,19 @@ export default function Sidebar({
           );
         })}
       </nav>
+
+      {/* móvil: botón flotante "+" (nueva sesión) a la altura del pulgar,
+          con el color del acento del tema; sustituye al del header */}
+      {onClose && (
+        <button
+          onClick={onCreate}
+          className="absolute bottom-[calc(4.25rem+env(safe-area-inset-bottom))] right-5 z-10 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-emerald text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95 md:hidden"
+          title={t("sidebar.newSession")}
+          aria-label={t("sidebar.newSession")}
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      )}
 
       {footer && (
         <div className="mt-auto border-t border-border px-3 py-2.5">{footer}</div>

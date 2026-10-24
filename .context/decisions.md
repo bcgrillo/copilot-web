@@ -94,3 +94,11 @@
   la card); cero persistencia (Principio 0); sin tocar la config global del CLI
   (--additional-mcp-config @/tmp/…json por proceso daemon). Rama feature/mcp-helper
   (única diferencia vs poc: el MCP).
+
+## Versionado (regla permanente, 24/10/2026)
+- Versión SIEMPRE en semver de 3 dígitos (v0.0.X durante la beta). Sin
+  cuartos dígitos (los "0.0.25.x" históricos equivalen a iteraciones; el lote
+  0.0.25.4 pasa a ser v0.0.26). Cuando el usuario diga que la beta se libera
+  "oficialmente", la versión pasa a v0.1.x y sigue en 3 dígitos.
+- El roadmap público vive en los READMEs (EN y ES); ninguno de esos to-dos
+  bloquea el lanzamiento de la beta.

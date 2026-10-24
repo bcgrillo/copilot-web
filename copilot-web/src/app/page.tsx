@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { CircleHelp, Moon, Sun, SunMoon } from "lucide-react";
+import pkg from "../../package.json";
+import { syncThemeAndFavicon } from "@/lib/cw";
+import { CircleHelp, Moon, Settings2, Sun, SunMoon } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import Chat from "@/components/Chat";
+import AboutModal from "@/components/AboutModal";
+import SettingsModal from "@/components/SettingsModal";
 import { apiUrl } from "@/lib/api";
 import { LangProvider, useT } from "@/lib/i18n";
 import type {
@@ -31,6 +34,13 @@ function Shell() {
   const [runningIds, setRunningIds] = useState<Record<string, boolean>>({});
   const [liveTurns, setLiveTurns] = useState<Record<string, LiveTurn | null>>({});
   const [error, setError] = useState<string | null>(null);
+  // sube en cada sesión nueva: Chat usa el cambio para focar el composer
+  const [focusNonce, setFocusNonce] = useState(0);
+  // pendientes de ver por sesión (turno terminado / permiso): badge del
+  // sidebar, contador del título, punto del favicon y notificación de
+  // sistema. Persiste en localStorage y se limpia al abrir la sesión con
+  // la pestaña visible.
+  const [unread, setUnread] = useState<Record<string, number>>({});
   const [loaded, setLoaded] = useState(false);
   // hidratación de sesión en vuelo (spinner en vez de landing al abrir)
   const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({});
@@ -61,6 +71,8 @@ function Shell() {
   // themeInit del layout ANTES de hidratar; aquí se persiste el ciclo
   const [theme, setTheme] = useState<"auto" | "light" | "dark">("auto");
   const [menuOpen, setMenuOpen] = useState(false); // drawer de sesiones (mobile)
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // comandos slash cacheados por sesión (paleta del composer)
   const [commands, setCommands] = useState<Record<string, AvailableCommand[]>>({});
   const abortRef = useRef<AbortController | null>(null);
@@ -89,6 +101,8 @@ function Shell() {
     try {
       localStorage.setItem("theme", theme);
     } catch {}
+    // favicon y (por si UI cambió accent) acento se re-sincronizan
+    syncThemeAndFavicon();
   }, [theme]);
 
   useEffect(() => {
@@ -262,6 +276,8 @@ function Shell() {
   const selectSession = (id: string) => {
     setMenuOpen(false); // cerrar drawer en mobile
     setActiveId(id); // loadCommands corre en el efecto de activeId
+    if (typeof document !== "undefined" && document.visibilityState === "visible")
+      clearUnread(id);
     try {
       localStorage.setItem("lastSession", id);
     } catch {}
@@ -269,6 +285,117 @@ function Shell() {
   };
 
   const activeSession = sessions.find((s) => s.id === activeId) ?? null;
+
+  const activeIdRef = useRef<string | null>(activeId);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+  const sessionsRef = useRef<SessionSummary[]>(sessions);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  /** marca "pendiente de ver" + notificación si la pestaña está oculta */
+  const markUnread = useCallback(
+    (id: string, kind: "done" | "perm") => {
+      const viewing =
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible" &&
+        activeIdRef.current === id;
+      try {
+        if (
+          !viewing &&
+          typeof Notification !== "undefined" &&
+          Notification?.permission === "granted" &&
+          document.visibilityState === "hidden" &&
+          localStorage.getItem("cwNotify") === "1"
+        ) {
+          const fav = document.getElementById("cw-fav-dyn") as HTMLLinkElement | null;
+          const n = new Notification("Copilot Web", {
+            body: t(kind === "perm" ? "notif.perm" : "notif.done"),
+            tag: `cw-${id}`,
+            icon: fav?.href || undefined,
+          });
+          n.onclick = () => {
+            window.focus();
+            n.close();
+            // al volver por la notificación, aterriza en la sesión pendiente
+            if (activeIdRef.current !== id) selectSession(id);
+          };
+        }
+      } catch {}
+      if (!viewing) setUnread((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+    },
+    [t],
+  );
+
+  const clearUnread = useCallback((id: string) => {
+    setUnread((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  // primera carga: lee el mapa persistido (antes de que persista de nuevo)
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cwUnread");
+      if (raw) setUnread(JSON.parse(raw) as Record<string, number>);
+    } catch {}
+    hydratedRef.current = true;
+  }, []);
+
+  // persistencia del contador no leído (los badges del sidebar lo leen)
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    try {
+      localStorage.setItem("cwUnread", JSON.stringify(unread));
+    } catch {}
+  }, [unread]);
+
+  // fin de turno detectado en runningIds (true→false) de cualquier sesión
+  const prevRunningRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    const prev = prevRunningRef.current;
+    for (const id of Object.keys(runningIds))
+      if (prev[id] && !runningIds[id]) markUnread(id, "done");
+    prevRunningRef.current = runningIds;
+  }, [runningIds, markUnread]);
+
+  // permiso pendiente (sticky) nuevo: reqId distinto al ya visto
+  const prevPermRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const prev = prevPermRef.current;
+    const now: Record<string, number> = {};
+    for (const [id, p] of Object.entries(stickyPerms)) {
+      if (p) {
+        now[id] = p.reqId;
+        if (prev[id] !== p.reqId) markUnread(id, "perm");
+      }
+    }
+    prevPermRef.current = now;
+  }, [stickyPerms, markUnread]);
+
+  // al volver a la pestaña se ve la sesión activa: limpia su pendiente
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && activeIdRef.current)
+        clearUnread(activeIdRef.current);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [clearUnread]);
+
+  // título de pestaña: (pendientes) + nombre de la sesión activa
+  const unreadTotal = Object.values(unread).reduce((a, b) => a + b, 0);
+  useEffect(() => {
+    const name = activeSession?.name?.split("\n")[0]?.slice(0, 60);
+    const prefix = unreadTotal ? `(${unreadTotal}) ` : "";
+    document.title = name ? `${prefix}Copilot Web · ${name}` : `${prefix}Copilot Web`;
+  }, [unreadTotal, activeSession?.name]);
   const liveTurn = activeId ? (liveTurns[activeId] ?? undefined) : undefined;
 
   function patchMessages(sessionId: string, updater: (msgs: ChatMessage[]) => ChatMessage[]) {
@@ -284,6 +411,7 @@ function Shell() {
     const { session } = await res.json();
     setSessions((prev) => [session, ...prev]);
     setActiveId(session.id);
+    setFocusNonce((n) => n + 1); // foco directo al composer de la sesión nueva
     // la sesión acaba de nacer en el daemon: ya tiene snapshot de comandos
     // (loadCommands corre en el efecto de activeId)
     try {
@@ -347,6 +475,7 @@ function Shell() {
       if (!sessionId || runningIds[sessionId]) return;
       setError(null);
       setMenuOpen(false);
+      clearUnread(sessionId); // enviar = estás mirando esta sesión
 
       const now = new Date().toISOString();
       patchMessages(sessionId, (msgs) => [
@@ -380,7 +509,8 @@ function Shell() {
           if (res.status === 429 && data.busy) {
             if (data.pending) {
               // turno anterior pendiente de un permiso: re-mostrar card y
-              // dejar el mensaje en cola para reenviar al responder
+              // dejar el mensaje en cola para reenviar al responder.
+              // SIN banner: la card ya lo explica (err.busyPerm era lioso)
               setStickyPerms((prev) => ({ ...prev, [sessionId]: data.pending! }));
               patchMessages(sessionId, (msgs) =>
                 msgs.filter((m) => m.id !== `local-${now}`)
@@ -391,7 +521,6 @@ function Shell() {
                 attachments,
                 attempts: 0,
               };
-              setError(t("err.busyPerm"));
               return;
             }
             // busy sin permiso: el turno anterior está terminando. Reintento
@@ -709,14 +838,26 @@ function Shell() {
         }
         onClose={menuOpen ? () => setMenuOpen(false) : undefined}
         footer={
-          <div className="flex items-center justify-end gap-1.5">
-            <Link
-              href="/about"
+          <div className="flex items-center justify-between gap-1.5">
+            {/* versión discreta (8): a la izquierda de los botones */}
+            <span className="pl-1 font-mono text-[10px] text-muted-foreground/70">
+              v{pkg.version}
+            </span>
+            <div className="flex items-center justify-end gap-1.5">
+            <button
+              onClick={() => setAboutOpen(true)}
               className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               title={t("footer.helpTitle")}
             >
               <CircleHelp className="h-3.5 w-3.5" />
-            </Link>
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("config.title")}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </button>
             <button
               onClick={() =>
                 setTheme((th) =>
@@ -734,6 +875,7 @@ function Shell() {
                 <Moon className="h-3.5 w-3.5" />
               )}
             </button>
+            </div>
           </div>
         }
         sessions={sessions}
@@ -741,6 +883,7 @@ function Shell() {
         runningIds={runningIds}
         onSelect={selectSession}
         onCreate={createSession}
+        unread={unread}
         onRename={renameSession}
         onDelete={deleteSession}
       />
@@ -761,11 +904,20 @@ function Shell() {
         onMenu={() => setMenuOpen(true)}
         onAbort={abortStream}
         onPermission={respondPermission}
+        focusNonce={focusNonce}
+        onRename={renameSession}
         stickyPermission={
           activeId ? (stickyPerms[activeId] ?? undefined) : undefined
         }
       />
-
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+      {settingsOpen && (
+        <SettingsModal
+          theme={theme}
+          setTheme={setTheme}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

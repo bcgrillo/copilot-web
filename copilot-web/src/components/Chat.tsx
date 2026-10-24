@@ -19,6 +19,7 @@ import {
   Loader2,
   Menu,
   Paperclip,
+  Pencil,
   SendHorizontal,
   Square,
   User,
@@ -51,6 +52,10 @@ type Props = {
   stickyPermission?: PermissionReq | null; // permiso de turno anterior re-mostrado
   onSend: (text: string, attachments?: Attachment[]) => void;
   onMenu?: () => void; // abre el drawer de sesiones (mobile)
+  // nonce que sube en cada sesión nueva: mueve el foco al composer
+  focusNonce?: number;
+  /** renombra la sesión activa (lápiz del header / tocar el título) */
+  onRename?: (id: string, name: string) => void;
   onAbort?: () => void; // aborta el stream SSE en curso (recuperación)
   onPermission?: (reqId: number, allow: boolean, optionId?: string) => void; // responde card de permiso
 };
@@ -84,7 +89,7 @@ function ToolChips({ tools }: { tools: ToolStep[] }) {
           >
             <summary className="flex min-h-[28px] cursor-pointer list-none items-center gap-2 px-2.5 py-1 font-mono text-[11px] text-foreground/90 [&::-webkit-details-marker]:hidden hover:bg-muted">
               {t.status === "completed" ? (
-                <Check className="h-3 w-3 shrink-0 text-emerald" />
+                <Check className="h-3 w-3 shrink-0 text-emerald-500" />
               ) : t.status === "error" || t.status === "failed" ? (
                 <X className="h-3 w-3 shrink-0 text-red-500" />
               ) : (
@@ -221,6 +226,8 @@ export default function Chat({
   error,
   onSend,
   onMenu,
+  focusNonce,
+  onRename,
   onAbort,
   onPermission,
   stickyPermission,
@@ -231,6 +238,26 @@ export default function Chat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // renombrado de la sesión activa desde el header: lápiz (desktop) o
+  // tocar el título (móvil, sin espacio para otro botón)
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState("");
+  const renameRef = useRef<HTMLInputElement>(null);
+  const startRename = () => {
+    if (!session) return;
+    setDraft(session.name);
+    setRenaming(true);
+    requestAnimationFrame(() => {
+      renameRef.current?.focus();
+      renameRef.current?.select();
+    });
+  };
+  const commitRename = () => {
+    setRenaming(false);
+    const next = draft.trim();
+    if (session && next && next !== session.name) onRename?.(session.id, next);
+  };
   // refs de la zona inferior (cards de decisión + composer + status-bar) para
   // el ResizeObserver del "keep at bottom"
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -374,6 +401,11 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
     wasRunning.current = running;
   }, [running, session]);
 
+  // sesión nueva: el composer listo para escribir de inmediato
+  useEffect(() => {
+    if (focusNonce) inputRef.current?.focus();
+  }, [focusNonce]);
+
   function completeCommand(c: AvailableCommand) {
     setInput(`/${c.name} `);
     saveDraft(session?.id, `/${c.name} `);
@@ -456,6 +488,19 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
     return () => ro.disconnect();
   }, [cardsActive, permCards.length, helperAsks.length]);
 
+  // al volver a la pestaña (clic en la notificación, o alt-tab), el smooth
+  // puede haberse cortado en background: si íbamos pegados al fondo, reaffirma
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && pinnedRef.current) {
+        const el = scrollRef.current;
+        if (el) el.scrollTo({ top: el.scrollHeight });
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   async function submit() {
     const text = input.trim();
     if (!text || running || !session) return;
@@ -487,28 +532,68 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6 md:py-3.5">
-        {onMenu && (
-          <button
-            onClick={onMenu}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground md:hidden"
-            title={t("chat.sessions")}
-          >
-            <Menu className="h-4.5 w-4.5" />
-          </button>
-        )}
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">
-            {session?.name ?? t("chat.noSession")}
-          </h1>
-          <p className="font-mono text-[11px] text-muted-foreground">
-            {session ? `sess ${session.id.slice(0, 8)}` : "—"}
-          </p>
+        {/* móvil (sidebar oculto): logo de la app a la izquierda
+            (mismo tamaño que el del sidebar para que no salte al abrir) */}
+        <div className="flex shrink-0 items-center md:hidden">
+          <Logo className="h-8 w-8 text-emerald" />
+        </div>
+        <div className="min-w-0 flex-1">
+          {renaming ? (
+            <input
+              ref={renameRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitRename();
+                if (e.key === "Escape") setRenaming(false);
+              }}
+              className="w-full rounded-md border border-input bg-background px-1.5 py-0.5 text-sm font-semibold outline-none"
+            />
+          ) : (
+            <>
+              <div className="flex min-w-0 items-center gap-0.5">
+                <h1
+                  onClick={() => startRename()}
+                  className={`min-w-0 truncate text-sm font-semibold ${
+                    session ? "cursor-text select-none" : ""
+                  }`}
+                >
+                  {session?.name ?? t("chat.noSession")}
+                </h1>
+                {session && (
+                  <button
+                    onClick={startRename}
+                    className="hidden h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:text-foreground md:flex"
+                    title={t("sidebar.rename")}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <p className="font-mono text-[11px] text-muted-foreground">
+                {session ? `#${session.id.slice(0, 8)}` : "—"}
+              </p>
+            </>
+          )}
         </div>
         {running && (
           <span className="ml-auto flex shrink-0 items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
             <span className="h-1.5 w-1.5 animate-ping rounded-full bg-emerald" />
             {t("chat.running")}
           </span>
+        )}
+        {/* menú de sesiones: a la derecha en móvil (h-8 = caja del logo,
+            ambos iconos quedan a la misma altura y centrados) */}
+        {onMenu && (
+          <button
+            onClick={onMenu}
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground md:hidden"
+            title={t("chat.sessions")}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
         )}
       </header>
 
@@ -574,7 +659,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
             })()}
             {running && liveTurn && <MemoLiveBlock turn={liveTurn} />}
             {running && !liveTurn && (
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <Avatar>
                   <Bot className="h-3.5 w-3.5" />
                 </Avatar>
@@ -656,7 +741,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
                               o.optionId
                             )
                           }
-                          className="rounded-lg bg-emerald px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
                         >
                           {permOptionLabel(o, t)}
                         </button>
@@ -674,7 +759,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
                 </button>
                 <button
                   onClick={() => onPermission?.(p.reqId, true)}
-                  className="rounded-lg bg-emerald px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                  className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
                 >
                   {t("chat.allow")}
                 </button>
@@ -830,7 +915,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
                   : t("chat.inputPlaceholder")
               }
               disabled={running || !session}
-              className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground md:text-sm"
+              className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-3 py-2 text-[0.9rem] outline-none placeholder:text-muted-foreground md:text-sm"
             />
             <button
               onClick={running ? stop : submit}
@@ -838,7 +923,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
               className={
                 running
                   ? "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-destructive text-destructive-foreground transition-opacity hover:opacity-90"
-                  : "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
+                  : "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
               }
               title={running ? t("chat.stop") : t("chat.send")}
             >
@@ -852,11 +937,12 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
           </div>
           </>
           )}
-          <div className="mt-2 flex min-h-[16px] items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
+          <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
             <span className="min-w-0 truncate">
               {wstatus?.cwd ? (
                 <>
-                  {t("chat.workDir")}:{" "}
+                  {/* móvil: solo la ruta (sin label "Working directory:") */}
+                  <span className="hidden sm:inline">{t("chat.workDir")}: </span>
                   <span className="font-mono">{wstatus.cwd}</span>
                   {wstatus.branch ? (
                     <span className="ml-1 font-mono shrink-0">
@@ -908,7 +994,7 @@ function userContentNodes(content: string): ReactNode[] {
     nodes.push(
       <span
         key={`a${nodes.length}`}
-        className="mt-1.5 flex items-center gap-1.5 rounded-md bg-primary-foreground/10 px-2 py-1 font-mono text-[11px]"
+        className="mt-1.5 flex items-center gap-1.5 rounded-md bg-foreground/10 px-2 py-1 font-mono text-[11px]"
       >
         <Paperclip className="h-3 w-3 shrink-0" /> {name}
       </span>
@@ -934,10 +1020,10 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
         </div>
       ) : (
         <div
-          className={`rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground ${
+          className={`rounded-2xl rounded-br-md bg-user-bubble px-4 py-2.5 text-sm leading-relaxed text-foreground ${
             hasResource
-              ? "flex max-w-[80%] flex-col items-stretch"
-              : "max-w-[80%] whitespace-pre-wrap"
+              ? "flex max-w-[90%] flex-col items-stretch"
+              : "max-w-[90%] whitespace-pre-wrap"
           }`}
         >
           {hasResource
@@ -1058,11 +1144,11 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
     ? msg.parts!
     : [{ kind: "text", content: msg.content }];
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-start sm:gap-3">
       <Avatar>
         <Bot className="h-3.5 w-3.5" />
       </Avatar>
-      <div className="min-w-0 max-w-[85%] space-y-1.5">
+      <div className="min-w-0 max-w-[90%] space-y-1.5">
         {msg.reasoning && <Reasoning text={msg.reasoning} open={hasParts} />}
         {parts.map((p, i) =>
           p.kind === "tool" ? (
@@ -1124,11 +1210,11 @@ function LiveBlock({ turn }: { turn: LiveTurn }) {
       </div>
     );
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-start sm:gap-3">
       <Avatar>
         <Bot className="h-3.5 w-3.5" />
       </Avatar>
-      <div className="min-w-0 max-w-[85%] space-y-1.5">
+      <div className="min-w-0 max-w-[90%] space-y-1.5">
         {empty && (
           <div className="flex gap-1 rounded-xl border border-border bg-secondary px-4 py-2.5">
             <Dot delay="0ms" />

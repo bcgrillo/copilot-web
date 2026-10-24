@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* dark por CLASE (.dark en <html>) NO por media query: el toggle del tema
+ * (auto/claro/oscuro) escribe .dark con themeInit; con media query, un móvil
+ * con sistema claro + web en dark manual perdería dark:prose-invert, etc. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #09090b;
@@ -67,10 +72,19 @@
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
   --color-emerald: var(--emerald);
+  --color-user-bubble: var(--user-bubble);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* burbuja del usuario: gris sutil según tema (12) — no blanco/negro */
+:root {
+  --user-bubble: #e4e4e7;
+}
+.dark {
+  --user-bubble: #2c2c31;
 }
 
 html,
@@ -96,7 +110,43 @@ textarea {
   scrollbar-color: var(--border) transparent;
 }
 
-/* regla general de interacción: botones, links, chips y summary → pointer */
+/* Regla general de interacción: botones, links, chips y summary → pointer */
+
+/* ===== Accent (Config): data-accent en <html>; emerald por defecto =====
+ * Sin fin de colores: 16 tonos en 2 filas de 8; cada uno deriva automáticamente
+ * el brillo mínimo por tema (500 en claro, 400 en oscuro → contraste garantizado
+ * con --primary-foreground). Todas las clases *-emerald leen var(--color-emerald). */
+html[data-accent="green"]   { --emerald: #22c55e; }
+html[data-accent="lime"]    { --emerald: #84cc16; }
+html[data-accent="teal"]    { --emerald: #14b8a6; }
+html[data-accent="cyan"]    { --emerald: #06b6d4; }
+html[data-accent="sky"]     { --emerald: #0ea5e9; }
+html[data-accent="blue"]    { --emerald: #3b82f6; }
+html[data-accent="indigo"]  { --emerald: #6366f1; }
+html[data-accent="violet"]  { --emerald: #8b5cf6; }
+html[data-accent="purple"]  { --emerald: #a855f7; }
+html[data-accent="fuchsia"] { --emerald: #d946ef; }
+html[data-accent="rose"]    { --emerald: #f43f5e; }
+html[data-accent="red"]     { --emerald: #ef4444; }
+html[data-accent="orange"]  { --emerald: #f97316; }
+html[data-accent="amber"]   { --emerald: #f59e0b; }
+html[data-accent="yellow"]  { --emerald: #eab308; }
+
+html.dark[data-accent="green"]   { --emerald: #4ade80; }
+html.dark[data-accent="lime"]    { --emerald: #a3e635; }
+html.dark[data-accent="teal"]    { --emerald: #2dd4bf; }
+html.dark[data-accent="cyan"]    { --emerald: #22d3ee; }
+html.dark[data-accent="sky"]     { --emerald: #38bdf8; }
+html.dark[data-accent="blue"]    { --emerald: #60a5fa; }
+html.dark[data-accent="indigo"]  { --emerald: #818cf8; }
+html.dark[data-accent="violet"]  { --emerald: #a78bfa; }
+html.dark[data-accent="purple"]  { --emerald: #c084fc; }
+html.dark[data-accent="fuchsia"] { --emerald: #e879f9; }
+html.dark[data-accent="rose"]    { --emerald: #fb7185; }
+html.dark[data-accent="red"]     { --emerald: #f87171; }
+html.dark[data-accent="orange"]  { --emerald: #fb923c; }
+html.dark[data-accent="amber"]   { --emerald: #fbbf24; }
+html.dark[data-accent="yellow"]  { --emerald: #facc15; }
 button:not(:disabled),
 [role="button"]:not(:disabled),
 summary,

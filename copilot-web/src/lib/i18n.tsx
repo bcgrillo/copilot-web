@@ -65,7 +65,6 @@ const es = {
   "err.renameNet": "No se pudo contactar con la API para renombrar la sesión",
   "err.delete": "No se pudo borrar (error {n})",
   "err.deleteNet": "No se pudo contactar con la API para borrar la sesión",
-  "err.busyPerm": "La sesión espera tu respuesta sobre un permiso pendiente.",
   "err.permStale":
     "Ese permiso ya no es válido (el daemon se reinició o la solicitud caducó). Si sigue haciendo falta, vuelve a enviar el mensaje.",
   "err.busyTurn":
@@ -80,6 +79,33 @@ const es = {
   "about.repo": "Código fuente en GitHub",
   "about.issues": "Reportar un problema (issues)",
   "about.back": "Volver al chat",
+  "config.title": "Ajustes",
+  "config.language": "Idioma",
+  "config.langAuto": "Automático (navegador)",
+  "config.appearance": "Apariencia",
+  "config.mode": "Modo",
+  "config.modeAuto": "Auto",
+  "config.modeLight": "Claro",
+  "config.modeDark": "Oscuro",
+  "config.color": "Color",
+  "config.colorHint": "elige el tono; el brillo se ajusta solo según el modo",
+  "config.notif": "Notificaciones de sistema",
+  "config.notifHint": "Avisos del navegador cuando la app está en segundo plano (pestaña oculta) y cualquier sesión termina o espera un permiso",
+  "config.notifOn": "Activadas",
+  "config.notifOff": "Desactivadas",
+  "notif.done": "El agente terminó de trabajar en una sesión.",
+  "notif.perm": "Una sesión espera tu respuesta sobre un permiso.",
+  "config.backend": "Daemon ACP",
+  "config.daemonRunning": "en marcha",
+  "config.daemonStopped": "sin conexión",
+  "config.daemonModel": "modelo",
+  "config.daemonPid": "pid",
+  "config.daemonPort": "puerto",
+  "config.restart": "Reiniciar daemon",
+  "config.restartBusy": "Reiniciando…",
+  "config.restartWarn":
+    "Mata el proceso del Copilot CLI: las sesiones activas se pierden en frío (no se pueden recargar tras el reinicio). Úsalo solo si el backend queda colgado.",
+  "config.failed": "no disponible",
 };
 
 const en: Record<keyof typeof es, string> = {
@@ -132,7 +158,6 @@ const en: Record<keyof typeof es, string> = {
   "err.renameNet": "Could not reach the API to rename the session",
   "err.delete": "Could not delete (error {n})",
   "err.deleteNet": "Could not reach the API to delete the session",
-  "err.busyPerm": "The session awaits your answer about a pending permission.",
   "err.permStale":
     "That permission request is no longer valid (the daemon restarted or it expired). Send your message again if it is still needed.",
   "err.busyTurn":
@@ -147,6 +172,33 @@ const en: Record<keyof typeof es, string> = {
   "about.repo": "Source code on GitHub",
   "about.issues": "Report an issue",
   "about.back": "Back to chat",
+  "config.title": "Settings",
+  "config.language": "Language",
+  "config.langAuto": "Auto (browser)",
+  "config.appearance": "Appearance",
+  "config.mode": "Mode",
+  "config.modeAuto": "Auto",
+  "config.modeLight": "Light",
+  "config.modeDark": "Dark",
+  "config.color": "Color",
+  "config.colorHint": "pick a hue; brightness adapts to the mode automatically",
+  "config.notif": "System notifications",
+  "config.notifHint": "Browser alerts when the app is in the background (tab hidden) and any session finishes or awaits a permission",
+  "config.notifOn": "Enabled",
+  "config.notifOff": "Disabled",
+  "notif.done": "The agent finished working on a session.",
+  "notif.perm": "A session is waiting for your permission.",
+  "config.backend": "ACP daemon",
+  "config.daemonRunning": "running",
+  "config.daemonStopped": "not reachable",
+  "config.daemonModel": "model",
+  "config.daemonPid": "pid",
+  "config.daemonPort": "port",
+  "config.restart": "Restart daemon",
+  "config.restartBusy": "Restarting…",
+  "config.restartWarn":
+    "Kills the Copilot CLI process: active sessions are lost cold (they cannot be reloaded after the restart). Use it only if the backend is stuck.",
+  "config.failed": "unavailable",
 };
 
 export const dict: Record<Lang, Record<string, string>> = { en, es };
@@ -183,12 +235,40 @@ export function LangProvider({
 }) {
   const [lang, setLang] = useState<Lang>("en");
   useEffect(() => setLang(detectLang()), []);
+  // cambio de idioma en vivo desde Config (persistido + re-detección)
+  useEffect(() => {
+    const rescan = () => setLang(detectLang());
+    window.addEventListener("copilot-web:lang", rescan);
+    return () => window.removeEventListener("copilot-web:lang", rescan);
+  }, []);
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
   return (
     <Ctx.Provider value={lang}>{children}</Ctx.Provider>
   );
+}
+
+/** tipo del control de idioma en Config: auto (navegador) o fijo */
+export type LangChoice = "auto" | Lang;
+
+/** selección del usuario en Config; «auto» borra la preferencia y re-detecta.
+ * Dispara un evento que el LangProvider escucha → cambio sin recargar. */
+export function setLangChoice(c: LangChoice) {
+  try {
+    if (c === "auto") localStorage.removeItem("lang");
+    else localStorage.setItem("lang", c);
+  } catch {}
+  window.dispatchEvent(new Event("copilot-web:lang"));
+}
+
+/** elección actual para marcar el control activo en Config */
+export function getLangChoice(): LangChoice {
+  try {
+    const v = localStorage.getItem("lang");
+    if (v === "en" || v === "es") return v;
+  } catch {}
+  return "auto";
 }
 
 export function useLang(): Lang {

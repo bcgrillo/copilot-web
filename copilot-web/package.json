@@ -1,6 +1,6 @@
 {
   "name": "copilot-web",
-  "version": "0.0.25",
+  "version": "0.0.32",
   "private": true,
   "bin": {
     "copilot-web": "bin/copilot-web.mjs"

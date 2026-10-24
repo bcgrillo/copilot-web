@@ -1,3 +1,75 @@
+## v0.0.32 — Header móvil con logo + lote de ajustes (feature/mcp-helper)
+- Header en móvil (sidebar oculto): logo de la app a la izquierda (h-8, mismo
+  tamaño que el del sidebar para que no salte al abrir) y menú de sesiones a la
+  derecha (h-8, iconos alineados); el lápiz de renombrar queda pegado al título
+  y menos sutil (foreground/60 → foreground en hover).
+- Selector de acento: 2 filas de 8 (16 tonos) con orden por hue; añadido
+  amarillo (#eab308 / #facc15). Los 4 extra pedidos exigen retirar 3 cercanos
+  (sky/purple/rose ≈ blue/violet/red) — pendiente de decidir con el usuario.
+- Notificaciones: fuera el punto rojo del favicon (doblo con el aviso del
+  navegador); se mantienen los badges del sidebar + Notification API oculta.
+  El hint de Config ya no habla de "sesión en segundo plano": el disparador es
+  la pestaña oculta, con cualquier sesión. Clic en la notificación aterriza en
+  la sesión pendiente y la vuelta a la pestaña re-pina el scroll al fondo.
+- Título de la pestaña con prefijo restaurado: `Copilot Web · sesión` (solo
+  se quitó el "Beta"); se estaba sustituyendo por el nombre a secas.
+
+## v0.0.31 — Pendiente de ver (badges) + notificaciones + header con renombrado (feature/mcp-helper)
+- Badges de "pendiente de ver" por sesión: contador rojo junto al nombre en el
+  sidebar cuando la sesión no es la activa (o la pestaña está oculta) y ocurre
+  un evento — turno terminado o permiso pendiente. Se limpia al visitar/enviar.
+- Título de la pestaña dinámico: `(N) Nombre de sesión` (fuera el "Beta");
+  favicon dinámico con punto rojo si hay pendientes.
+- Notificación de sistema opt-in (Notification API) si la pestaña está oculta:
+  toggle en Config (sección Nueva), con permiso solo al activar; clic enfoca la
+  ventana. Almacén: `cwUnread` (Record<sessId, n>) y `cwNotify` en localStorage.
+- Header del chat: `#abcdef01` (fuera el prefijo "sess"); renombrado de la
+  sesión activa con lápiz sutil (desktop) o tocando el título (móvil); Enter/
+  blur confirman, Esc cancela.
+
+## v0.0.30 — Sin banner busyPerm + Check verde fijo (feature/mcp-helper)
+- Al enviar con un permiso pendiente ya NO aparece el banner adicional: la card
+  de permiso es la única UI (el mensaje queda en cola y se reenvía al responder).
+- El check de tools completadas es verde fijo (emerald-500), independiente del
+  acento del tema (coherente con los botones permitir).
+## v0.0.29 — Fix favicon dinámico + foco en sesión nueva (feature/mcp-helper)
+- Favicon: la hidratación de Next restauraba el href del link estático y el icono
+  "volvía al blanco". Ahora el favicon dinámico usa un link propio (#cw-fav-dyn)
+  al final del head (el último rel=icon gana) protegido por MutationObserver.
+- Sesión nueva: el composer recibe el foco automáticamente al crearla.
+## v0.0.28 — Verde semántico en permisos + favicon dinámico con acento (feature/mcp-helper)
+- Botones "permitir" de la card de permisos a verde esmeralda FIJO (bg-emerald-500), independiente del acento elegido; rechazar sigue en rojo fijo (verde/rojo semánticos).
+- Favicon dinámico: mismo logo, coloreado con el acento del usuario (claro 500/dark 400) vía data-URL en themeInit (pre-JS-hidratación), reacciona en vivo a tema/acento/sistema; el favicon estático ?v= queda como fallback.
+## v0.0.26 — Lote UI beta rápida (feature/mcp-helper)
+
+- **Cambio de esquema de versiones: siempre 3 dígitos (semver).** Este lote era
+  "0.0.25.4" y pasa a ser v0.0.26; la beta oficial abrirá en v0.1.x.
+- (8) Versión sutil `v{package.json#version}` en el footer del sidebar (izquierda de los botones, mono 10px, muted-foreground/70).
+- (9) Sidebar en móvil: full ancho (w-full → sm:w-72) y fondo más claro translúcido como el popup (bg-background/80 backdrop-blur-md; en sm+ restaura bg-card/50).
+- (10) ModalShell fullscreen en móvil: la tarjeta ocupa toda la pantalla (sin radius/border, p-5, scroll; sm+ restaura popup centrado max-h-85dvh/max-w-lg) — aplica a About y Settings por igual.
+- (11) Botón de envío en color de tema (bg-emerald → sigue el acento data-accent elegido).
+- (12) Burbujas del usuario en gris sutil por tema en vez de blanco/negro: token nuevo --user-bubble (#e4e4e7 light / #2c2c31 dark) mapeado a @theme inline → bg-user-bubble, texto text-foreground; chip de adjuntos dentro de la burbuja a bg-foreground/10.
+- (13) To-dos registrados: 'session-search' (buscador de sesiones en el sidebar) y 'interleaved-events' (mensajes intercalados estilo gh cli durante procesos en marcha).
+- Nota: el favicon .ico no existe (404 esperado); el icono es favicon.svg (?v=pkg.version para cache-bust).
+
+## v0.0.25.2 — About/Config modales + acento + daemon (feature/mcp-helper)
+- About y Config como popups (ModalShell backdrop bg-background/80 + blur, Esc/backdrop/✕).
+- Config: idioma auto/EN/ES en vivo (setLangChoice + evento copilot-web:lang),
+  modo auto/claro/oscuro, color del acento (15 paletas data-accent en
+  globals.css; html.dark ajusta el brillo 500→400; todo el UI ya lee
+  var(--emerald)).
+- layout themeInit aplica accent pre-paint (localStorage "accent", regex
+  /^[a-z]{3,12}$/; sin flash).
+- GET /api/daemon: alive/pid/port/model (probe + /proc). POST {action:"restart"}:
+  SIGTERM/SIGKILL al daemon (+helper ask-user huérfanos) y respawn con argv del
+  /proc viejo completado a la intención del launcher (--model default +
+  --additional-mcp-config @helper + --allow-tool) y env saneado
+  (whitelist DAEMON_ENV); espera probe 20 s. E2E: pid 111682→116558, helper y
+  model en cmdline, session/new OK tras el restart.
+- /about usa AboutContent compartido (ruta + modal idénticos).
+- Footer: ayuda abre modal (antes <a> a /about); botón nuevo de settings.
+- PRUEBA reversible del logo (sidebar/about): sin badge, text-emerald directo.
+
 # Changelog
 
 ## v0.0.25 — branding, tema auto, About y disclaimer (feature/mcp-helper)
@@ -152,3 +224,9 @@ presentación (stream vivo y materialize/reload) si es el primer chunk de texto
 del turno y hubo una tool antes: regex `^Info:\s*\S+\s*$` (`DAEMON_INFO_RE`).
 El stream ACP no se toca (PRINCIPIO 0). Verificado E2E: vivo sin "Info:" y
 reload limpio.
+## v0.0.27 — UX móvil: avatar/burbujas/drawer (feature/mcp-helper)
+- Avatar del asistente encima del contenido en móvil (flex-col → sm:flex-row) en AssistantMessage, LiveBlock y placeholder de puntos.
+- Burbujas más anchas: usuario 80%→90%, asistente 85%→90%.
+- Drawer móvil: solo el close (X) arriba a la derecha; botón + del header solo en desktop y ahora con color del tema (bg-emerald).
+- FAB "+" flotante en móvil con acento (h-14, rounded-full, sombra, safe-area, sobre el footer).
+- Status-bar móvil: se conserva cwd y rama; solo se oculta el label "Working directory:".
