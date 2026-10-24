@@ -1,4 +1,4 @@
-## v0.1.1 (24/10/2026, publicar con tag) — arranque sin clonar + CI interno
+## v0.1.1 (24/10/2026) — release publicada (repo público)
 - READMEs: Quick Start con ruta SIN CLONAR (instalador autocontenido desde
   releases/latest: descarga él mismo el tarball) y git clone con la URL real
   del repo; eliminado el `npx copilot-web` (no hay paquete npm publicado —
@@ -13,6 +13,14 @@
   la descarga del asset está bloqueada por el proxy del sandbox — mockeada en
   el test con el mismo tarball local), npm ci ×2 sobre el árbol extraído y
   build limpio del proyecto.
+- Publicada: squash dev→main (b85d12d "Dev to Main: v0.1.1…", árboles
+  idénticos), tag v0.1.1 en dev y release en el repo público (workflow
+  release success: tarball copilot-web-v0.1.1.tar.gz 119KB + install.sh
+  standalone 2.9KB). CI verde en main y dev del repo público (primer run
+  del nuevo ci.yml). Badges READMEs → release v0.1.1.
+- Bug corregido en publicar.sh: usaba --tags (empujaría TODOS los tags
+  locales) y los tags no se añadían realmente a REFS; ahora cada tag va
+  explícito en la lista de refs.
 
 ## v0.1.0 (24/10/2026) — primera beta pública (repo público bcgrillo/copilot-web)
 - Refactor completo del código (commit 028ae46): comentarios y strings del

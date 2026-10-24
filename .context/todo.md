@@ -12,7 +12,9 @@
   push y PR; badge real en los READMEs (antes "tests-pending").
 - [x] quick start READMEs: ruta sin clonar (install.sh standalone) + git clone
   con URL real; fuera el npx falso. → v0.1.1 (publicar).
-- [ ] release v0.1.1: squash dev→main + tag + publicar (con el usuario).
+- [x] release v0.1.1: squash dev→main (b85d12d) + tag + publicar — release
+  success en repo público (tarball + install.sh standalone); CI verde
+  (main+dev). Bug de publicar.sh corregido (--tags → refs explícitas).
 - [ ] limpieza ramas lualab-xyz: quedan origin/checkpoint-24-10-2026 y
   origin/feature/mcp-helper (candidatas a borrar).
 

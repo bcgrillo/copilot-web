@@ -13,7 +13,8 @@ el `npx copilot-web` que nunca existió) + activar el badge de build/test.
   por el egress del sandbox → mock con el mismo tarball); npm ci sobre el
   árbol extraído ×2 OK; build de proyecto OK (pids.max=256 del contenedor: el
   config ya usa cpus:1; fallar si /tmp lleno o stack previo vivo).
-- Pendiente: squash dev→main + tag v0.1.1 + publicar (con el user).
+- Publicado: squash dev→main + tag v0.1.1 + publicar (con el user; release
+  success, CI verde). Badges → v0.1.1 (post-release sync).
 
 ## Hecho (ciclo v0.1.0 — cerrado)
 
