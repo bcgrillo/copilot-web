@@ -1,2 +1,0 @@
-Archivo de prueba generado en /workspace/test-e2e.txt
-Se puede eliminar cuando quieras.
