@@ -1,9 +1,14 @@
 #!/bin/sh
 # copilot-web — beta installer
-# Installs dependencies, builds the Next.js app and starts
-# the single-command launcher (ACP daemon + web server).
+# Runs in two ways:
+#   1. inside a checkout (scripts/install.sh): installs dependencies, builds
+#      the Next.js app and starts the single-command launcher.
+#   2. standalone (only install.sh downloaded from a release): fetches the
+#      latest release tarball on its own, then continues like (1).
+# Set COPILOT_WEB_NO_START=1 to install and build without starting.
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/copilot-web"
 
@@ -27,6 +32,29 @@ if ! command -v copilot >/dev/null 2>&1; then
   echo "         The web UI will start, but no ACP daemon can be spawned." >&2
 fi
 
+# --- standalone bootstrap ---------------------------------------------------
+# Outside a checkout? Download the latest release tarball next to the script
+# and keep going with the extracted tree.
+if [ ! -f "$APP/package.json" ]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "error: curl is required to download copilot-web outside a checkout" >&2
+    exit 1
+  fi
+  echo "[copilot-web] no local copy found — fetching the latest release tarball"
+  RELEASE_JSON="$(curl -fsSL https://api.github.com/repos/bcgrillo/copilot-web/releases/latest)"
+  TARBALL_URL="$(printf '%s\n' "$RELEASE_JSON" |
+    grep -o '"browser_download_url": *"[^"]*/copilot-web-[^"]*\.tar\.gz"' |
+    head -n 1 | sed 's/.*"browser_download_url": *"//; s/"$//')"
+  if [ -z "$TARBALL_URL" ]; then
+    echo "error: could not find a tarball in the latest release" >&2
+    exit 1
+  fi
+  echo "[copilot-web] downloading $TARBALL_URL"
+  curl -fsSL "$TARBALL_URL" | tar -xzf - -C "$SCRIPT_DIR"
+  ROOT="$SCRIPT_DIR"
+  APP="$ROOT/copilot-web"
+fi
+
 # --- install & build -------------------------------------------------------
 cd "$APP"
 if [ -f package-lock.json ]; then
@@ -43,4 +71,8 @@ echo "[copilot-web] press Ctrl+C to stop; restart any time with: npm run serve"
 echo
 
 # --- run --------------------------------------------------------------------
+if [ "${COPILOT_WEB_NO_START:-0}" = "1" ]; then
+  echo "[copilot-web] COPILOT_WEB_NO_START=1 — skipping launcher, run 'npm run serve'"
+  exit 0
+fi
 exec npm run serve

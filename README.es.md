@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="Licencia" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square" /></a>
-  <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Tests" src="https://img.shields.io/badge/tests-pendientes-lightgrey.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/estado-beta-orange.svg?style=flat-square" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/bcgrillo/copilot-web?style=flat-square&label=issues" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.0-blue.svg?style=flat-square" /></a>
@@ -73,19 +73,27 @@ plataforma.
 
 ## Inicio rápido
 
+Sin clonar — usa el instalador de la última release (autocontenido: descarga
+él mismo el tarball de la release):
+
 ```bash
-git clone <github repo> copilot-web
+curl -fsSL https://github.com/bcgrillo/copilot-web/releases/latest/download/install.sh -o install.sh
+sh install.sh
+# → http://localhost:3100
+```
+
+O desde un checkout:
+
+```bash
+git clone https://github.com/bcgrillo/copilot-web.git copilot-web
 cd copilot-web
 sh scripts/install.sh      # instala deps, compila y arranca
 # → http://localhost:3100
 ```
 
-La instalación/arranque es un único launcher que levanta el daemon ACP
-(`copilot --acp`) y el servidor web:
-
-```bash
-npx copilot-web                     # web en :3100 + daemon en :3222
-```
+En ambos casos, `install.sh` instala dependencias, compila y arranca el único
+launcher, que levanta a la vez el daemon ACP (`copilot --acp`, puerto 3222)
+y el servidor web (puerto 3100).
 
 Si queda un daemon de una ejecución anterior, el launcher lo reutiliza en vez
 de abrir otro.

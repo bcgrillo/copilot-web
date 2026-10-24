@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: copilot-web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: copilot-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        working-directory: copilot-web
+        run: ./node_modules/.bin/tsc --noEmit
+
+      - name: Build web app
+        working-directory: copilot-web
+        run: npm run build
+
+      - name: Test suite (ACP layer mocked)
+        working-directory: copilot-web
+        run: npm test
