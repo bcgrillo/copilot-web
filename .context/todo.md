@@ -2,13 +2,16 @@
 # todo.md
 
 ## Próximos pasos (con el usuario)
-- [ ] merge dev: usuario squash-mergea feature/publish-ready cuando confirme
-  que está todo listo (refactor + tests + docs).
-- [ ] publish: primera subida al repo público bcgrillo/copilot-web (existe,
-  vacío, accesible) con `./publicar.sh` cuando el usuario dé el ok, y después
-  pipe + release allí (release.yml ya funciona tal cual).
+- [x] merge dev: usuario squash-mergea feature/publish-ready (hecho 24/10,
+  squash 2bf063b) + main (Dev to Main: Checkpoint 2, e3154bd).
+- [x] publish: primera subida al repo público bcgrillo/copilot-web (main+dev,
+  e3154bd/2bf063b) con ./publicar.sh.
+- [x] release v0.1.0: tag en dev, workflow release.yml en el repo público
+  (tarball + gh release --generate-notes). Badges READMEs a v0.1.0.
 - [ ] pipeline CI (GitHub Actions): lint/tsc/build/test en cada PR — SOLO
   interno, no va en el README público; se hace antes de la beta.
+- [ ] limpieza ramas lualab-xyz: quedan origin/checkpoint-24-10-2026 y
+  origin/feature/mcp-helper (candidatas a borrar).
 
 ## Deployment
 - [ ] base-path-param: aceptar el prefijo público directamente como parámetro

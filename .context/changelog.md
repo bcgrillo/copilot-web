@@ -1,4 +1,4 @@
-## v0.0.33 (sin publicar) — Refactor "publish-ready" + suite de tests (feature/publish-ready)
+## v0.1.0 (24/10/2026) — primera beta pública (repo público bcgrillo/copilot-web)
 - Refactor completo del código (commit 028ae46): comentarios y strings del
   server en EN, nombres/estructura revisados; `lib/content.ts` (helpers de
   extracción compartidos live/hidratación) y `lib/limits.ts` (MAX_FILES=8,

@@ -14,7 +14,7 @@
   <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Tests" src="https://img.shields.io/badge/tests-pendientes-lightgrey.svg?style=flat-square" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/estado-beta-orange.svg?style=flat-square" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/bcgrillo/copilot-web?style=flat-square&label=issues" /></a>
-  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.0.32-blue.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.0-blue.svg?style=flat-square" /></a>
 </p>
 
 <p align="center">
