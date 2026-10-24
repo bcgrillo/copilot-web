@@ -1,49 +1,30 @@
-# task.md — Public-ready: refactor + tests + docs (feature/publish-ready)
+# task.md — Publicación v0.1.0 (beta oficial) — CERRADA
 
-Rama `feature/publish-ready` (desde origin/dev 2f9a150). Objetivo: dejar el
-proyecto listo para publicar y luego (CON el usuario) merge a dev, publicación,
-pipeline y release.
+Ciclo completo ejecutado el 24/10/2026 y verificado end-to-end.
 
-## Frente 1 — Refactor/revisión completa — HECHO (028ae46)
-- Comentarios EN en todos los ficheros; strings del server EN (dict es/es del
-  i18n intacto: es contenido del producto).
-- Nombres/estructura revisados; `lib/content.ts` (textOfParts, toolInputDetail,
-  cleanToolOutput… compartido live/hidratación) y `lib/limits.ts` nuevos.
-- 8 deps sin uso eliminadas; `npm install` regeneró el lockfile.
-- Fix: chat/route.ts quedó roto a mitad de edición en la sesión previa —
-  reparado (bloque tool_call_update + cierre de `if (detail)`).
-- tsc limpio; build limpio; server re-verificado (/, /about, /api/sessions).
+## Hecho
+1. Refactor/revisión completa "publish-ready" (028ae46, rama feature/publish-ready,
+   fusionada vía squash a dev 2bf063b).
+2. Suite de tests con capa ACP mockeada: 60 tests / 8 ficheros (0757317, 9c6d114).
+3. Docs consolidadas (1c575cb) + feedback roadmap READMEs (317fd9b) + mockup (8708bc1)
+   + títulos "Copilot Web" (98c1d01) + enlace spec ACP (ca96dbe).
+4. Repo público bcgrillo/copilot-web publicado con ./publicar.sh: main=e3154bd,
+   dev=2bf063b.
+5. Release: tag v0.1.0 (sobre dev, decidido por el user) → push a ambos repos →
+   workflow release.yml en el público (run 40143153157, **success**) → release
+   creada: copilot-web-v0.1.0.tar.gz (116KB) + install.sh assets uploaded.
+6. Docs post-release en dev (25a7eed): badges release → v0.1.0, changelog v0.1.0,
+   decisions versionado aplicado, todo.md al día.
 
-## Frente 2 — Suite de tests con capa ACP mockeada — HECHO (0757317, 9c6d114)
-- `npm run test` = vitest run (vitest.config.ts: alias `@`, entorno node).
-- 60 tests / 8 ficheros, todos verdes, tsc limpio:
-  - lib: materialize, content, store, copilotStore, helperAsk, cw, api, accents.
-  - api/chat route: validación (404/400/429+pending, adjuntos), orden de
-    eventos SSE, replay+Info filters, cards permiso, guard 20 s (fake timers).
-- La capa ACP SIEMPRE mockeada (`vi.mock("@/lib/acp")`): los tests no tocan
-  el daemon :3222 ni sesiones reales del CLI.
-- Bug real corregido por los tests: `isObj` daba `""` con arrays de bloques
-  (content.ts + materialize.ts); `textContentOf` acepta strings.
-
-## Frente 3 — Documentación consolidada — HECHO (esta sesión)
-- design.md: sección Tests + notas MCP helper fusionado (fuera la rama vieja).
-- decisions.md: decisión Testing (mock ACP); notas de rama feature/mcp-helper
-  retiradas (fusionada en dev).
-- changelog.md: entrada v0.0.33 (sin publicar): refactor + suite + deps.
-- README: badge tests (pendiente de CI) y roadmap ya lo mencionaban; sin
-  cambios de fondo.
-
-## Siguiente (con el usuario, NO hacer sin confirmar)
-1. Aviso de feature lista → merge a dev (squash, con el user).
-2. Publicación + pipeline CI (lint/tsc/build/test) + release v0.0.33.
-3. Todo abierto relevante: base-path-param, check delete/rename en CLI nuevas,
-   file-edit-diff-view, búsqueda de sesiones, eventos intercalados (todo.md).
+## Pendiente (siguiente tarea)
+- Pipeline CI interno pre-beta (lint/tsc/build/test por PR; badges de tests).
+- Deuda técnica (SQL/todo.md): base-path-param, check-session-delete-rename,
+  queued-turn-messages, basic-auth, session-search, bash-prefix-memory,
+  file-edit-diff-view.
 
 ## Estado ops
-- Server web :3100 vivo (build + restart verificados al cierre del frente 1).
-- Daemon :3222 vivo — NUNCA tocarlo/matarlo desde tareas.
-- Ritual: matar solo PIDs del web-server; `set -a && source .env.local && set +a &&
-  npm run build`; relanzar con `npm run serve -- --no-daemon --cwd /workspace
-  --model default` desde copilot-web; curl / y /about = 200.
-- `npx tsc` está ROTADO en este entorno (instala tsc@2.0.4) → usar
-  `./node_modules/.bin/tsc --noEmit`.
+- Server web :3100 vivo en dev (root/about = 200). Daemon ACP :3222 vivo —
+  NUNCA tocarlo.
+- ./publicar.sh sincroniza lualab → bcgrillo/copilot-web (gitignored, solo local).
+- `npx tsc` está ROTO en este entorno (instala tsc@2.0.4) → usar
+  ./node_modules/.bin/tsc --noEmit desde copilot-web/.
