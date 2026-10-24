@@ -8,8 +8,11 @@
   e3154bd/2bf063b) con ./publicar.sh.
 - [x] release v0.1.0: tag en dev, workflow release.yml en el repo público
   (tarball + gh release --generate-notes). Badges READMEs a v0.1.0.
-- [ ] pipeline CI (GitHub Actions): lint/tsc/build/test en cada PR — SOLO
-  interno, no va en el README público; se hace antes de la beta.
+- [x] pipeline CI (GitHub Actions): ci.yml con tsc/build/vitest (mock ACP) en
+  push y PR; badge real en los READMEs (antes "tests-pending").
+- [x] quick start READMEs: ruta sin clonar (install.sh standalone) + git clone
+  con URL real; fuera el npx falso. → v0.1.1 (publicar).
+- [ ] release v0.1.1: squash dev→main + tag + publicar (con el usuario).
 - [ ] limpieza ramas lualab-xyz: quedan origin/checkpoint-24-10-2026 y
   origin/feature/mcp-helper (candidatas a borrar).
 

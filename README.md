@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square" /></a>
-  <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Tests" src="https://img.shields.io/badge/tests-pending-lightgrey.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/status-beta-orange.svg?style=flat-square" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/bcgrillo/copilot-web?style=flat-square&label=issues" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.0-blue.svg?style=flat-square" /></a>
@@ -72,19 +72,27 @@ and your platform.
 
 ## Quick start
 
+No clone needed — run the latest release installer (self-contained: it
+downloads the release tarball by itself):
+
 ```bash
-git clone <github repo> copilot-web
+curl -fsSL https://github.com/bcgrillo/copilot-web/releases/latest/download/install.sh -o install.sh
+sh install.sh
+# → http://localhost:3100
+```
+
+Or from a checkout:
+
+```bash
+git clone https://github.com/bcgrillo/copilot-web.git copilot-web
 cd copilot-web
 sh scripts/install.sh      # installs deps, builds and starts
 # → http://localhost:3100
 ```
 
-The install/startup is a single launcher that brings up both the ACP daemon
-(`copilot --acp`) and the web server:
-
-```bash
-npx copilot-web                     # web on :3100 + daemon on :3222
-```
+Either way, `install.sh` installs dependencies, builds the app and starts the
+single launcher, which brings up both the ACP daemon (`copilot --acp`, port
+3222) and the web server (port 3100).
 
 If a daemon from a previous run is still up, the launcher reuses it instead of
 spawning a second one.

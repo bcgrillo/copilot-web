@@ -1,4 +1,21 @@
-# task.md — Publicación v0.1.0 (beta oficial) — CERRADA
+# task.md — Ciclo v0.1.0 cerrado; follow-ups arrancando (v0.1.1)
+
+## v0.1.1 (24/10 23:40+) — arranque sin clonar + CI — CÓDIGO LISTO
+Pide del user: arreglar Quick Start (`git clone <github repo>` sin URL real y
+el `npx copilot-web` que nunca existió) + activar el badge de build/test.
+- READMEs EN/ES: ruta sin clonar (curl a releases/latest/download/install.sh,
+  autocontenido) + git clone con URL real + texto del launcher corregido.
+- scripts/install.sh: modo standalone (descarga tarball de latest release si
+  no vive en un checkout) + COPILOT_WEB_NO_START=1 opcional.
+- .github/workflows/ci.yml: push/PR → npm ci + tsc --noEmit + build + npm test
+  (mock ACP). READMEs: badge tests-pending → badge real de Actions.
+- Test del bootstrap: curl/API reales OK (la descarga del asset está bloqueada
+  por el egress del sandbox → mock con el mismo tarball); npm ci sobre el
+  árbol extraído ×2 OK; build de proyecto OK (pids.max=256 del contenedor: el
+  config ya usa cpus:1; fallar si /tmp lleno o stack previo vivo).
+- Pendiente: squash dev→main + tag v0.1.1 + publicar (con el user).
+
+## Hecho (ciclo v0.1.0 — cerrado)
 
 Ciclo completo ejecutado el 24/10/2026 y verificado end-to-end.
 

@@ -1,3 +1,19 @@
+## v0.1.1 (24/10/2026, publicar con tag) — arranque sin clonar + CI interno
+- READMEs: Quick Start con ruta SIN CLONAR (instalador autocontenido desde
+  releases/latest: descarga él mismo el tarball) y git clone con la URL real
+  del repo; eliminado el `npx copilot-web` (no hay paquete npm publicado —
+  era falso).
+- scripts/install.sh: modo standalone (fuera de checkout → descarga el tarball
+  de la última release a la altura del script y sigue) + env opcional
+  COPILOT_WEB_NO_START=1 para instalar/compilar sin arrancar.
+- CI interno: .github/workflows/ci.yml en push/pull_request (npm ci, tsc
+  --noEmit, build, npm test con capa ACP mockeada); badge real de CI en los
+  READMEs (se retira el placeholder "tests-pending").
+- Verificado: bootstrap standalone probado con curl/API reales (URL correcta;
+  la descarga del asset está bloqueada por el proxy del sandbox — mockeada en
+  el test con el mismo tarball local), npm ci ×2 sobre el árbol extraído y
+  build limpio del proyecto.
+
 ## v0.1.0 (24/10/2026) — primera beta pública (repo público bcgrillo/copilot-web)
 - Refactor completo del código (commit 028ae46): comentarios y strings del
   server en EN, nombres/estructura revisados; `lib/content.ts` (helpers de
