@@ -1,49 +1,27 @@
 /**
- * Materialización del histórico de una sesión a partir del log de updates
- * ACP (sessionLog en lib/acp.ts: replay de session/load + updates en vivo
- * + eventos sintéticos de permiso). Sustituye al parse del events.jsonl del
- * CLI: solo canal ACP, no se lee ningún fichero interno del CLI.
+ * Materializes a session history from the ACP update log (sessionLog in
+ * lib/acp.ts: session/load replay + live updates + synthetic permission
+ * events). Replaces parsing the CLI's internal events.jsonl: the ACP channel
+ * only — no CLI internals are ever read from disk.
  *
- * Semántica verificada empíricamente contra el daemon (1.0.80):
- * - user_message_chunk compone la burbuja de usuario (el adjunto aparece
- *   anotado "[Resource link: file://…]", que el cliente pinta como chip).
- * - agent_message_chunk / agent_thought_chunk componen la respuesta.
- * - tool_call / tool_call_update componen chips por toolCallId; la salida
- *   llega en rawOutput.content (o rawOutput.output, o content[] anidado).
- * - permission_request / permission_resolved (sintéticos de la web) son
- *   meta del chip o chip "permiso ·" propio, igual que en el turno vivo.
- * - available_commands_update y demás tipos sin UI se ignoran.
+ * Semantics verified against the daemon (CLI 1.0.80):
+ * - user_message_chunk composes the user bubble (attachments arrive annotated
+ *   as "[Resource link: file://…]", which the client renders as a chip).
+ * - agent_message_chunk / agent_thought_chunk compose the reply.
+ * - tool_call / tool_call_update compose chips keyed by toolCallId; output
+ *   arrives in rawOutput.content (or rawOutput.output, or nested content[]).
+ * - permission_request / permission_resolved (synthetic web events) become
+ *   chip metadata or their own "permission ·" chip, like the live turn.
+ * - available_commands_update and other UI-less kinds are ignored.
  */
 import { DAEMON_INFO_RE, type AcpUpdate } from "./acp";
+import { cleanToolOutput, textContentOf, toolInputDetail } from "./content";
 import type { ChatMessage, MessagePart } from "./types";
 
-/** Tail que el CLI añade a la captura de bash: se oculta en el chip. */
-export function cleanToolOut(s: string): string {
-  return s.replace(/\n?<shellId: [^>]*>\s*$/, "");
-}
-
 const isObj = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object";
+  !!v && typeof v === "object" && !Array.isArray(v);
 
-/** Texto de content de chunk (bloque único o lista, plana o anidada). */
-function chunkText(c: unknown): string {
-  if (isObj(c)) return typeof c.text === "string" ? c.text : "";
-  if (Array.isArray(c))
-    return c
-      .map((b) => {
-        if (typeof b === "string") return b;
-        if (!isObj(b)) return "";
-        if (typeof b.text === "string") return b.text;
-        // tool_call_update anida { type: "content", content: { type: "text" } }
-        const inner = b.content;
-        if (isObj(inner) && typeof inner.text === "string") return inner.text;
-        return "";
-      })
-      .join("");
-  return "";
-}
-
-/** Anota resource_link el formato que el cliente ya pinta (chips 📎). */
+/** Annotates resource_link blocks in the format the client already renders. */
 function userBlockText(c: unknown): string {
   const single = (block: Record<string, unknown>): string => {
     if (block.type === "resource_link") {
@@ -60,9 +38,8 @@ function userBlockText(c: unknown): string {
 type OpenAssistant = { deniable: Set<string> };
 
 /**
- * Updates ACP → mensajes. El orden del log es el orden real (el replay
- * llega antes que el resultado de session/load; los updates en vivo,
- * mientras el turno corre).
+ * ACP updates → messages. Log order is the real order (replay arrives before
+ * session/load resolves; live updates stream while the turn runs).
  */
 export function materialize(updates: AcpUpdate[]): ChatMessage[] {
   const out: ChatMessage[] = [];
@@ -71,15 +48,14 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
 
   const flushAssistant = () => {
     if (!openMsg || !openState) return;
-    const st = openState;
     const msg = openMsg;
     openMsg = null;
     openState = null;
     msg.content = (msg.parts ?? [])
       .flatMap((p) => (p.kind === "text" ? [p.content] : []))
       .join("");
-    // el razonamiento ya vive en parts (tramos intercalados); basta con
-    // comprobar texto + tramos no vacíos
+    // reasoning already lives in parts (interleaved segments); checking text
+    // plus non-empty parts is enough
     const has = msg.content.trim() || (msg.parts?.length ?? 0) > 0;
     if (!has) {
       const i = out.indexOf(msg);
@@ -116,16 +92,15 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
     msg.parts.push({ kind: "tool", toolCallId: id, title, status, detail });
   };
 
-  /** Último chip con ese toolCallId (escanea el histórico hacia atrás). */
+  /** Finds the last chip with that toolCallId (scans history backwards). */
   const findTool = (
     id: string
   ): { msg: ChatMessage; part: MessagePart } | undefined => {
     for (let m = out.length - 1; m >= 0; m--) {
-      const msg = out[m];
-      const parts = msg.parts ?? [];
+      const parts = out[m].parts ?? [];
       for (let i = parts.length - 1; i >= 0; i--) {
         const p = parts[i];
-        if (p.kind === "tool" && p.toolCallId === id) return { msg, part: p };
+        if (p.kind === "tool" && p.toolCallId === id) return { msg: out[m], part: p };
       }
     }
     return undefined;
@@ -150,31 +125,27 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
 
     if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
       const { msg } = ensureAssistant(tsOf(u));
-      const text = chunkText(u.content);
+      const text = textContentOf(u.content);
       if (!text) continue;
+      msg.parts = msg.parts ?? [];
+      const last = msg.parts[msg.parts.length - 1];
       if (kind === "agent_thought_chunk") {
-        const { msg } = ensureAssistant(tsOf(u));
-        const text = chunkText(u.content);
-        if (!text) continue;
-        msg.parts = msg.parts ?? [];
-        const last = msg.parts[msg.parts.length - 1];
-        // los deltas se concatenan al último tramo reasoning contiguo; un
-        // salto a texto/tool abre un nuevo bloque (igual que el CLI: tramos
-        // alternos de pensamiento, frase, herramienta…). NOTA: el replay frío
-        // de session/load NO trae thought chunks (ACP no los reproduce), así
-        // que esto solo llena sesiones calientes (sessionLog en RAM)
+        // deltas concatenate into the last contiguous reasoning segment; a
+        // jump to text/tool opens a new one (like the CLI: alternating
+        // thought, sentence, tool…). NOTE: the cold replay of session/load
+        // does not include thought chunks (ACP does not replay them), so this
+        // only fills hot sessions (sessionLog kept in RAM)
         if (last && last.kind === "reasoning") last.content += text;
         else msg.parts.push({ kind: "reasoning", content: text });
       } else {
-        msg.parts = msg.parts ?? [];
-        const last = msg.parts[msg.parts.length - 1];
-        const opensNewText = !(last && last.kind === "text");
+        // daemon "Info: <file>" noise after create/edit: the chip already
+        // shows it, so the duplicate is dropped
         if (
-          opensNewText &&
+          !(last && last.kind === "text") &&
           DAEMON_INFO_RE.test(text) &&
           msg.parts.some((p) => p.kind === "tool")
         )
-          continue; // "Info: <ruta>" del daemon: el chip ya lo enseña
+          continue;
         if (last && last.kind === "text") last.content += text;
         else msg.parts.push({ kind: "text", content: text });
       }
@@ -184,14 +155,7 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
     if (kind === "tool_call") {
       const { msg } = ensureAssistant(tsOf(u));
       const id = typeof u.toolCallId === "string" ? u.toolCallId : undefined;
-      const rawIn = isObj(u.rawInput)
-        ? (u.rawInput as { command?: string })
-        : undefined;
-      const detail = rawIn?.command
-        ? `$ ${rawIn.command}`
-        : rawIn
-          ? JSON.stringify(rawIn).slice(0, 400)
-          : chunkText(u.content) || undefined;
+      const detail = toolInputDetail(u.rawInput, u.content);
       pushTool(
         msg, id,
         String(u.title ?? "tool"),
@@ -210,8 +174,8 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
         : undefined;
       const rawDetail = rawOut
         ? rawOut.content ?? rawOut.output ?? ""
-        : chunkText(u.content);
-      const detail = rawDetail ? cleanToolOut(rawDetail) : "";
+        : textContentOf(u.content);
+      const detail = rawDetail ? cleanToolOutput(rawDetail) : "";
       const hit = findTool(id);
       if (hit && hit.part.kind === "tool") {
         const p = hit.part;
@@ -223,7 +187,7 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
               ? `${p.detail}\n\n${detail}`
               : detail;
       } else if (detail || st) {
-        // update sin tool_call previo (replay parcial): chip nuevo
+        // update with no preceding tool_call (partial replay): new chip
         const { msg } = ensureAssistant(tsOf(u));
         pushTool(
           msg, id,
@@ -270,17 +234,16 @@ export function materialize(updates: AcpUpdate[]): ChatMessage[] {
       if (denied && tcId) {
         const hit = findTool(tcId);
         if (hit && hit.part.kind === "tool") {
-          const p = hit.part;
-          const partsR = hit.msg.parts ?? [];
-          const i = partsR.indexOf(p);
+          const parts = hit.msg.parts ?? [];
+          const i = parts.indexOf(hit.part);
           if (i >= 0)
-            partsR[i] = { ...p, title: `${p.title} (denied)`, status: "error" };
+            parts[i] = { ...hit.part, title: `${hit.part.title} (denied)`, status: "error" };
         }
       }
       continue;
     }
 
-    // available_commands_update y cualquier otro tipo: sin UI
+    // available_commands_update and any other kind: no UI
   }
 
   flushAssistant();

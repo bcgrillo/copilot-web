@@ -1,15 +1,16 @@
-/** Estado de trabajo de una sesión para el status-bar: cwd (+ git branch al
- * vuelo con git estándar) y, si se pasó --model al launcher, el modelo
- * declarado. El modelo NO se lee de ACP (1.0.80 no lo expone por canal
- * oficial): solo se muestra si el operador lo configuró al arrancar. */
+/** Session working state for the status-bar: cwd (+ git branch on the fly
+ * with standard git) and, if --model was passed to the launcher, the
+ * declared model. The model is NOT read from ACP (1.0.80 does not expose it
+ * on the official channel): it is only shown if the operator set it at
+ * boot. */
 import { execFile } from "node:child_process";
 import { findSession } from "@/lib/copilotStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** git nativo a mano (el `git` del PATH es el shim de CodePods → host API, que
- * no puede leer rutas del contenedor); lectura solamente. */
+/** hand-rolled native git (the PATH `git` is the CodePods shim → host API,
+ * which cannot read container paths); read-only. */
 const GIT_BIN = process.env.GIT_BIN || "/usr/bin/git";
 const git = (cwd: string, ...args: string[]) =>
   new Promise<string | null>((resolve) =>

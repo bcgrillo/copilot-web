@@ -5,23 +5,23 @@ import pkg from "../../package.json";
 import { ACCENTS } from "@/lib/accents";
 import "./globals.css";
 
-/** prefijo público (proxy CodePods lo strippea): hrefs del <head> deben irlo */
+/** public prefix (CodePods proxy strips it): <head> hrefs must carry it */
 const PUBLIC_PREFIX = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export const metadata: Metadata = {
   title: "Copilot Web",
   description: "Interfaz web para GitHub Copilot CLI",
-  // el file-based icon de AppRouter emitiría href="/icon.svg" sin prefijo
+  // AppRouter file-based icon would emit href="/icon.svg" without the prefix
   // (404 tras proxy) → lo servimos desde public/ prefijado y versionado
   icons: {
     icon: [{ url: `${PUBLIC_PREFIX}/favicon.svg?v=${pkg.version}`, type: "image/svg+xml" }],
   },
 };
 
-/** el idioma llega por env en runtime (--lang del launcher) → sin prerender estático */
+/** language comes by env at runtime (--lang from the launcher) → no static prerender */
 export const dynamic = "force-dynamic";
 
-/** móvil: 100% del alto real (barra de dirección aparece/desaparece) y
+/** mobile: 100% of the real height (browser bar shows/hides) and
  * viewport que encoge con el teclado (el composer nunca queda tapado). */
 export const viewport: Viewport = {
   width: "device-width",
@@ -29,9 +29,9 @@ export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
 };
 
-/** favicon dinámico: el mismo path del SVG público, coloreado con el acento
- * del usuario (claro 500 / oscuro 400) vía data-URL, sin servidor ni cookies.
- * El link estático `?v=` queda como fallback si el script falla. */
+/** dynamic favicon: same path as the public SVG, tinted with the user
+ * accent (light 500 / dark 400) as a data-URL, no server, no cookies.
+ * The static link's `?v=` remains as fallback if the script fails. */
 const FAVICON_D =
   readFileSync(resolve(process.cwd(), "public/favicon.svg"), "utf8").match(
     / d="([^"]+)"/
@@ -57,14 +57,14 @@ const themeInit = `
         l = document.createElement('link');
         l.id = MYID; l.rel = 'icon'; l.type = 'image/svg+xml';
       }
-      // append al final: el último link[rel=icon] es el que gana; hidratación de
-      // Next restaura el href del link estático y podría reinsertarlo después
+      // append at the end: the last link[rel=icon] wins; Next hydration
+      // restores the static link href and could re-insert it afterwards
       document.head.appendChild(l);
       l.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     } catch(e){}
   };
   // Next puede reinsertar/restaurar sus iconos al hidratar o navegar:
-  // mantenemos el nuestro siempre último (gana por orden de documento)
+  // ours always stays last (document order wins)
   if (window.MutationObserver) {
     var mo = new MutationObserver(function(muts){
       for (var i = 0; i < muts.length; i++) {
@@ -94,14 +94,14 @@ const themeInit = `
   apply();
   // Config (page/SettingsModal) avisa de cambios de tema y acento
   window.__cwApplyTheme = apply;
-  // auto reacciona en vivo a cambios del sistema; una elección explícita
-  // (light/dark) persistida en localStorage se re-aplica igual de consistente
+  // auto reacts live to system changes; an explicit choice
+  // (light/dark) chosen in localStorage is re-applied just as consistently
   if (mq.addEventListener) mq.addEventListener('change', apply);
 })();
 `;
 
 /** flag de idioma del launcher (--lang): disponible en cliente en runtime,
- * ANTES de la hidratación (no es env de build). */
+ * BEFORE hydration (not a build env). */
 const langInit = process.env.COPILOT_WEB_LANG
   ? `window.__WEB_LANG=${JSON.stringify(process.env.COPILOT_WEB_LANG)};`
   : "";

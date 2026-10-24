@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-/** Snapshot cacheado de comandos slash de la sesión (fallback: último global). */
+/** Cached snapshot of the session slash commands (fallback: latest global). */
 export async function GET(_req: Request, { params }: Params) {
   const { id } = await params;
   let commands = listAvailableCommands(id);

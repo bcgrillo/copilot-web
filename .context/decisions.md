@@ -92,8 +92,23 @@
 - MCP helper: la tool ask_user NO conoce su sesión → la card se muestra en la(s)
   sesión(es) con turno en curso; long-poll 5 min con expiración honesta (+5 min oculta
   la card); cero persistencia (Principio 0); sin tocar la config global del CLI
-  (--additional-mcp-config @/tmp/…json por proceso daemon). Rama feature/mcp-helper
-  (única diferencia vs poc: el MCP).
+  (--additional-mcp-config @/tmp/…json por proceso daemon). Fusionado en dev
+  (helper integrado; notas históricas de la rama en los checkpoints).
+
+## Testing (24/10/2026)
+- Suite con vitest (`npm run test` en copilot-web). La capa ACP (`lib/acp.ts`)
+  SIEMPRE mockeada en tests: nunca se toca el daemon real (:3222) ni sesiones
+  del CLI desde los tests. Detalle de cobertura: design.md.
+
+## Repos (24/10/2026)
+- ORIGEN de trabajo: `lualab-xyz/copilot-web` (remoto `origin`, todas las ramas).
+- PÚBLICO: `bcgrillo/copilot-web` — SOLO main, dev y tags. Todas las URLs del
+  repo (READMEs, About.tsx, release.yml) apuntan ya al público.
+- Publicación vía `./publicar.sh` (GITIGNORED, solo local): push de una sola
+  vez a la URL pública (`git push URL refs/remotes/origin/main:refs/heads/main
+  ...` + `--tags`) SIN crear/eliminar remotes (el shim bloquea remote mgmt).
+- La fuente es SIEMPRE `origin/…` (no la copia de trabajo): el WIP local no
+  puede filtrarse al repo público. Dry-run con `./publicar.sh -n`.
 
 ## Versionado (regla permanente, 24/10/2026)
 - Versión SIEMPRE en semver de 3 dígitos (v0.0.X durante la beta). Sin

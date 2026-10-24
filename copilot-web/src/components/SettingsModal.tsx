@@ -1,7 +1,7 @@
 "use client";
 
-/** Config: idioma, modo claro/oscuro/auto, color del acento y estado/restart
- * del daemon ACP (útil en beta si el backend se queda colgado). */
+/** Config: language, light/dark/auto mode, accent color and status/restart
+ * of the ACP daemon (useful in beta when the backend hangs). */
 import { useCallback, useEffect, useState } from "react";
 import { BellRing, Moon, RotateCw, Sun, SunMoon } from "lucide-react";
 import ModalShell from "@/components/ModalShell";
@@ -129,7 +129,7 @@ export default function SettingsModal({
     return () => m.removeEventListener?.("change", calc);
   }, []);
 
-  /* idioma: elección persistida (auto/en/es) */
+  /* language: persisted choice (auto/en/es) */
   const [langChoice, setLangChoiceState] = useState<LangChoice>("auto");
   useEffect(() => setLangChoiceState(getLangChoice()), []);
 

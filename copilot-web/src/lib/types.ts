@@ -4,37 +4,37 @@ export type ToolStep = {
   id?: string;
   title: string;
   status: string;
-  /** salida del comando/tool (tool_call_update.content) para el desplegable */
+  /** command/tool output (tool_call_update.content) for the dropdown */
   detail?: string;
 };
 
-/** Timeline ordenado de un turno: tramos de texto y tool calls intercalados */
+/** Ordered timeline of a turn: interleaved text spans and tool calls */
 export type MessagePart =
   | { kind: "text"; content: string; reasoning?: string }
   | { kind: "reasoning"; content: string }
   | { kind: "tool"; toolCallId?: string; title: string; status: string; detail?: string }
   | { kind: "system"; content: string };
 
-/** Turno en vivo (solo cliente) mientras llega el stream */
+/** Live turn (client only) while the stream arrives */
 export type LiveTurn = {
   reasoning: string;
   parts: MessagePart[];
-  /** prompt que inició el turno (para plegar salidas de comandos slash) */
+  /** prompt that started the turn (to fold slash command outputs) */
   userPrompt?: string;
-  /** solicitudes de permiso pendientes (cards sobre el composer) */
+  /** pending permission requests (cards above the composer) */
   permissions?: PermissionReq[];
 };
 
-/** Solicitud de permiso del agente, pendiente de respuesta desde la web */
+/** Permission request from the agent, awaiting an answer from the web */
 export type PermissionReq = {
   reqId: number;
   title: string;
   toolCallId?: string;
-  /** opciones que ofrece el agente (spec ACP): el UI pinta cada una */
+  /** options offered by the agent (ACP spec): the UI renders each one */
   options?: PermissionOption[];
 };
 
-/** Opción de un permiso (spec ACP PermissionOptionKind) */
+/** One permission option (ACP PermissionOptionKind spec) */
 export type PermissionOption = {
   optionId: string;
   kind: string;
@@ -48,12 +48,13 @@ export type ChatMessage = {
   reasoning?: string;
   tools?: ToolStep[];
   parts?: MessagePart[];
-  /** hora de llegada sellada en la cache RAM del server SOLO para updates
-   * en vivo; el replay frío de session/load no la tiene (ACP no la da) */
+  /** arrival timestamp, stamped in the server RAM cache ONLY for live
+   * updates; the cold session/load replay does not have it (ACP does not
+   * provide it) */
   ts?: string;
 };
 
-/** Comando slash del agente (snapshot available_commands_update de ACP). */
+/** Agent slash command (ACP available_commands_update snapshot). */
 export type AvailableCommand = {
   name: string;
   description?: string;
@@ -64,20 +65,19 @@ export type SessionSummary = {
   id: string;
   name: string;
   createdAt: string;
-  /** cwd de la sesión (session/list del CLI o overlay web) */
+  /** session cwd (CLI session/list or web overlay) */
   cwd?: string;
-  /** última actividad (overlay web o session/list del CLI); base del orden */
+  /** last activity (web overlay or CLI session/list); sort key */
   updatedAt?: string;
   /**
-   * contenido bajo demanda: SOLO lo rellena GET /api/sessions/:id
-   * (materialización del canal ACP en el server). El listado es
-   * solo-metadatos.
+   * content on demand: ONLY filled by GET /api/sessions/:id (ACP channel
+   * materialization on the server). The listing is metadata-only.
    */
   messages?: ChatMessage[];
 };
 
 export type Attachment = {
   name: string;
-  /** contenido en base64 */
+  /** base64-encoded content */
   content: string;
 };

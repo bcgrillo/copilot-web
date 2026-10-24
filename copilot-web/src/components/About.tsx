@@ -7,7 +7,7 @@ import Logo from "@/components/Logo";
 import { BASE } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 
-const REPO = "https://github.com/lualab-xyz/copilot-web";
+const REPO = "https://github.com/bcgrillo/copilot-web";
 
 export default function AboutContent({ onBack }: { onBack?: () => void }) {
   const t = useT();
@@ -26,7 +26,7 @@ export default function AboutContent({ onBack }: { onBack?: () => void }) {
 
       <p className="text-sm text-muted-foreground">{t("about.line")}</p>
 
-      {/* disclaimer estándar para proyectos no oficiales */}
+      {/* standard disclaimer for unofficial projects */}
       <div className="mt-4 flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
         <CircleAlert className="h-4 w-4 shrink-0 text-amber-500" />
         <p className="text-xs text-muted-foreground">{t("about.disclaimer")}</p>

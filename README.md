@@ -1,20 +1,20 @@
 <p align="center">
-  <a href="https://github.com/lualab-xyz/copilot-web">
+  <a href="https://github.com/bcgrillo/copilot-web">
     <picture>
       <source srcset="assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
-      <img src="assets/logo-light.svg" alt="copilot-web logo" width="120" height="120">
+      <img src="assets/logo-light.svg" alt="Copilot Web logo" width="120" height="120">
     </picture>
   </a>
 </p>
 
-<p align="center"><strong>copilot-web</strong> — a minimal, self-hosted web interface for the<br><a href="https://github.com/github/copilot-cli">GitHub Copilot CLI</a>, over ACP.</p>
+<p align="center"><strong>Copilot Web</strong> — a minimal, self-hosted web interface for the<br><a href="https://github.com/github/copilot-cli">GitHub Copilot CLI</a>, over ACP.</p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square" /></a>
-  <a href="https://github.com/lualab-xyz/copilot-web/actions"><img alt="Tests" src="https://img.shields.io/badge/tests-pending-lightgrey.svg?style=flat-square" /></a>
-  <a href="https://github.com/lualab-xyz/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/status-beta-orange.svg?style=flat-square" /></a>
-  <a href="https://github.com/lualab-xyz/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/lualab-xyz/copilot-web?style=flat-square&label=issues" /></a>
-  <a href="https://github.com/lualab-xyz/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.0.32-blue.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Tests" src="https://img.shields.io/badge/tests-pending-lightgrey.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/status-beta-orange.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/bcgrillo/copilot-web?style=flat-square&label=issues" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.0.32-blue.svg?style=flat-square" /></a>
 </p>
 
 <p align="center">
@@ -22,7 +22,18 @@
   <a href="README.es.md">Español</a>
 </p>
 
+<p align="center">
+  <img src="assets/mockup.png" alt="Copilot Web — session sidebar and chat window" width="760" />
+</p>
+
 ---
+
+**Copilot Web** is a minimal, self-hosted web interface for the
+[GitHub Copilot CLI](https://github.com/github/copilot-cli). It talks to the
+Copilot CLI over **ACP** (the [Agent Client
+Protocol](https://agentclientprotocol.com/protocol/v1/overview) behind
+`copilot --acp`),
+keeping sessions, context and permissions where they live: in the CLI process.
 
 > **Not affiliated** — this is an unofficial community project. It is not
 > affiliated with, endorsed by, or sponsored by GitHub, Microsoft or OpenAI.
@@ -43,6 +54,9 @@ and your platform.
 - **Ask-me helper (MCP)** — the web registers a small MCP tool (`ask_user`) with
   the daemon: when the agent needs a decision mid-turn, a question card appears
   in the chat and the running turn waits for your answer (5 min timeout).
+- **System notifications (opt-in)** — with the tab in the background, finished
+  turns raise a browser notification, an unread counter in the title and a
+  favicon dot.
 - **Zero materialized data** — `copilot` ACP is the only source of truth. The
   web keeps a small in-memory cache that is discarded on restart; the CLI
   history is replayed from ACP (`session/load`). Nothing is written to disk.
@@ -141,11 +155,9 @@ Planned work (none of it blocks the beta launch; versions stay 3-digit semver,
 `v0.0.x` while in beta — the official beta release will be `v0.1.x`):
 
 - **Basic auth (authN/authZ)** — single-user login for the web UI.
-- **CI pipelines (GitHub Actions)** — lint/type-check/build plus a test suite,
-  wired to the tests badge above.
 - **Session search** — filter sessions by title from the sidebar.
-- **Interleaved live events** — show progress/events inline mid-turn, in the
-  spirit of the GitHub CLI.
+- **Queued user messages** — keep typing while a turn is running: new messages
+  are queued and interleaved into the ongoing conversation, like the Copilot CLI.
 - **Shell `allow_always` memory** — remember approved shell command prefixes
   for the session instead of asking again per exact command.
 - **File edit/creation rendering** — show file creation and edits

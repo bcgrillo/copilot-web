@@ -15,15 +15,15 @@ export async function POST(req: Request) {
     const body = await req.json();
     name = body?.name;
   } catch {
-    /* sin body */
+    /* no body */
   }
-  // id de la sesión local = sessionId del agente ACP (contexto nativo)
+  // local session id = the ACP agent sessionId (native context)
   let agentId: string;
   try {
     agentId = await createAgentSession();
   } catch (e) {
     return Response.json(
-      { error: `agente ACP: ${e instanceof Error ? e.message : e}` },
+      { error: `ACP agent: ${e instanceof Error ? e.message : e}` },
       { status: 502 }
     );
   }

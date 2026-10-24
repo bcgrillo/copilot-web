@@ -1,13 +1,14 @@
-/** Preguntas del MCP helper (tool ask_user). El helper (copilot-web/mcp/ask-user.mjs)
- * POSTea aquí y hace long-poll de la respuesta; la UI lee las pendientes y
- * responde. Todo en RAM — Principio 0. */
+/** ask_user questions from the MCP helper. The helper (copilot-web/mcp/ask-user.mjs)
+ * POSTs here and long-polls for the answer; the UI reads the pending asks
+ * and answers. Everything in RAM — Principle 0. */
 import { newAsk, pendingAsks, getAsk } from "@/lib/helperAsk";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** POST (desde el MCP helper): crea una pregunta y devuelve {id}. `poll=1` →
- * además espera hasta 5 min a que el usuario responda (long-poll del helper). */
+/** POST (from the MCP helper): creates a question and returns {id}.
+ * `poll=1` → additionally waits up to 5 min for the user answer (helper
+ * long-poll). */
 export async function POST(req: Request) {
   let body: { question?: string; kind?: string; options?: string[]; poll?: boolean } | null;
   try {
@@ -27,8 +28,8 @@ export async function POST(req: Request) {
   return Response.json(await waitForAnswer(ask.id));
 }
 
-/** GET: pendientes para la UI (polling del cliente) o estado de una pregunta
- * por ?id= (long-poll del helper hasta 5 min). */
+/** GET: pending asks for the UI (client polling) or the state of a single
+ * ask via ?id= (helper long-poll up to 5 min). */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");

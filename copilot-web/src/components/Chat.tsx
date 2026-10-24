@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { useT, useLang, localeOf } from "@/lib/i18n";
+import type { PendingAsk } from "@/lib/helperAsk";
+import { MAX_FILES, MAX_FILE_BYTES } from "@/lib/limits";
 import type {
   Attachment,
   AvailableCommand,
@@ -42,8 +44,8 @@ import Logo from "@/components/Logo";
 
 type Props = {
   session: (SessionSummary & { messages?: ChatMessage[] }) | null;
-  /** hidratación del GET en vuelo: spinner en el área del chat en vez de
-   * la "sesión vacía" (evita el flash de landing al abrir una sesión) */
+  /** GET hydration in flight: spinner in the chat area instead of the
+   * "empty session" (avoids the landing flash when opening a session) */
   loading?: boolean;
   running: boolean;
   liveTurn?: LiveTurn;
@@ -52,16 +54,16 @@ type Props = {
   stickyPermission?: PermissionReq | null; // permiso de turno anterior re-mostrado
   onSend: (text: string, attachments?: Attachment[]) => void;
   onMenu?: () => void; // abre el drawer de sesiones (mobile)
-  // nonce que sube en cada sesión nueva: mueve el foco al composer
+  // nonce that rises on every new session: moves focus to the composer
   focusNonce?: number;
-  /** renombra la sesión activa (lápiz del header / tocar el título) */
+  /** renames the active session (header pencil / tapping the title) */
   onRename?: (id: string, name: string) => void;
-  onAbort?: () => void; // aborta el stream SSE en curso (recuperación)
+  onAbort?: () => void; // aborts the in-flight SSE stream (recovery)
   onPermission?: (reqId: number, allow: boolean, optionId?: string) => void; // responde card de permiso
 };
 
-/** Etiqueta de una opción de permiso: por kind desde i18n (allow_once →
- * "Permitir esta vez"...), fallback al nombre/raw del agente. */
+/** Label for a permission option: by kind from i18n (allow_once →
+ * "Allow once"…), falling back to the agent name/raw kind. */
 function permOptionLabel(o: PermissionOption, t: (k: string) => string): string {
   if (o.kind === "allow_once") return t("chat.permAllowOnce");
   if (o.kind === "allow_always") return t("chat.permAllowAlways");
@@ -120,20 +122,13 @@ function ToolChips({ tools }: { tools: ToolStep[] }) {
 
 const SUGGESTION_KEYS = ["chat.sug1", "chat.sug2", "chat.sug3"];
 
-type HelperAsk = {
-  id: string;
-  question: string;
-  kind: "info" | "choice";
-  options: string[];
-};
-
 /** Card para una pregunta del MCP helper (tool ask_user): opciones en vertical
- * + input de texto libre SIEMPRE visible (el envío se habilita al escribir). */
+ * + a free-text input ALWAYS visible (sending is enabled while typing). */
 function HelperAskCard({
   ask,
   onAnswer,
 }: {
-  ask: HelperAsk;
+  ask: PendingAsk;
   onAnswer: (id: string, answer: string) => void;
 }) {
   const t = useT();
@@ -189,7 +184,6 @@ function HelperAskCard({
   );
 }
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 const CHAT_CHUNK = 40; // mensajes visibles al cargar + por cada "cargar anteriores"
 
@@ -239,8 +233,8 @@ export default function Chat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // renombrado de la sesión activa desde el header: lápiz (desktop) o
-  // tocar el título (móvil, sin espacio para otro botón)
+  // renaming the active session from the header: pencil (desktop) or
+  // tapping the title (mobile, no room for another button)
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const renameRef = useRef<HTMLInputElement>(null);
@@ -258,13 +252,13 @@ export default function Chat({
     const next = draft.trim();
     if (session && next && next !== session.name) onRename?.(session.id, next);
   };
-  // refs de la zona inferior (cards de decisión + composer + status-bar) para
+  // refs to the bottom area (decision cards + composer + status-bar) for
   // el ResizeObserver del "keep at bottom"
   const bottomRef = useRef<HTMLDivElement>(null);
   const permWrapRef = useRef<HTMLDivElement>(null);
   const helperWrapRef = useRef<HTMLDivElement>(null);
-  // el usuario está "anclado al fondo" si la vista está a <=100px del final:
-  // los crecimientos de layout no deben taparle la última línea
+  // the user is "pinned to the bottom" if the view is within 100px of the
+  // end: layout growth must not cover the last line
   const pinnedRef = useRef(true);
   const markPinned = () => {
     const el = scrollRef.current;
@@ -278,8 +272,8 @@ export default function Chat({
     model?: string | null;
   } | null>(null);
 
-  // borraador por sesión en el navegador: al cambiar de sesión se recupera
-  // lo escrito (no es data del CLI, es estado de UI local, como el idioma)
+  // per-session draft in the browser: switching sessions restores what
+  // was typed (not CLI data, just local UI state, like the language)
   useEffect(() => {
     let d: Record<string, string> = {};
     try { d = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}"); } catch {}
@@ -306,7 +300,7 @@ export default function Chat({
           if (live) setWstatus(d);
         }
       } catch {
-        /* sin estado: la barra queda vacía */
+        /* no state: the bar renders empty */
       }
     };
     // la rama puede cambiar sin que la web se entere: sondeo + refresco al foco
@@ -326,9 +320,9 @@ export default function Chat({
   const [slashHidden, setSlashHidden] = useState<string | null>(null);
   const isCmdToken = input.startsWith("/") && !input.includes(" ");
   // cards de permiso en vivo (turno en curso) o "sticky" (permiso de un turno
-  // anterior cuyo stream murió: nunca se autoriza solo, se re-muestra). En
-  // el sondeo del turno zombi (running sin permisos live) la sticky también
-  // aparece: el permiso sigue pendiente en el daemon.
+  // earlier turn whose stream died: never self-authorized, it is re-shown).
+  // In the zombie-turn polling (running with no live permissions) the
+  // sticky also shows: the permission is still pending in the daemon.
   const permCards: PermissionReq[] = running
     ? liveTurn?.permissions?.length
       ? liveTurn.permissions
@@ -338,11 +332,11 @@ export default function Chat({
     : stickyPermission
       ? [stickyPermission]
       : [];
-  // preguntas del MCP helper (tool ask_user): se muestran mientras la sesión
-  // tiene un turno en curso (v0, diseño en docs/mcp-helper.md)
-  const [helperAsks, setHelperAsks] = useState<HelperAsk[]>([]);
-  // hay una decisión pendiente (permisos / ask_user): las cards ocupan el
-  // ancho del composer y éste se oculta hasta resolverse
+  // MCP helper questions (tool ask_user): shown while the session has a
+  // turn in progress (v0, design in docs/mcp-helper.md)
+  const [helperAsks, setHelperAsks] = useState<PendingAsk[]>([]);
+  // a decision is pending (permissions / ask_user): the cards take the
+  // composer width and the composer stays hidden until resolved
   const cardsActive = permCards.length > 0 || helperAsks.length > 0;
   useEffect(() => {
     if (!running) {
@@ -377,7 +371,7 @@ export default function Chat({
         body: JSON.stringify({ answer }),
       });
     } catch {
-      /* la card ya se quitó; el helper expira solo */
+      /* the card was already removed; the helper expires on its own */
     }
   };
   const slashMatches = isCmdToken
@@ -401,7 +395,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
     wasRunning.current = running;
   }, [running, session]);
 
-  // sesión nueva: el composer listo para escribir de inmediato
+  // new session: composer ready to type right away
   useEffect(() => {
     if (focusNonce) inputRef.current?.focus();
   }, [focusNonce]);
@@ -426,23 +420,23 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
   const activeId = session?.id ?? null;
   const hasMsgs = msgs.length > 0;
 
-  // ventana de render: solo los últimos N mensajes; "cargar anteriores" crece
+  // render window: only the last N messages; "load older" grows it
   const [visibleCount, setVisibleCount] = useState(CHAT_CHUNK);
   const start = Math.max(0, msgs.length - visibleCount);
   const visibleMsgs = msgs.slice(start);
   const hiddenCount = start;
 
-  // conserva la posición visual al insertar mensajes antiguos arriba
+  // keeps the visual position when older messages are inserted above
   const pendingAdjustRef = useRef(0);
 
-  // reinicia la ventana al cambiar de sesión
+  // resets the window when the session changes
   useEffect(() => {
     setVisibleCount(CHAT_CHUNK);
     pendingAdjustRef.current = 0;
   }, [activeId]);
 
-  // anti-flash: ancla el scroll al fondo ANTES del primer paint al abrir o
-  // hidratar una sesión; el suave queda solo para mensajes en streaming
+  // anti-flash: pins the scroll to the bottom BEFORE the first paint when
+  // opening or hydrating a session; smooth scrolling only while streaming
   useLayoutEffect(() => {
     if (!activeId || !hasMsgs) return;
     const el = scrollRef.current;
@@ -450,7 +444,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
     pinnedRef.current = true;
   }, [activeId, hasMsgs]);
 
-  // ajusta scrollTop por el delta de altura tras añadir los antiguos (pre-paint)
+  // adjusts scrollTop by the height delta after inserting older ones (pre-paint)
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || !pendingAdjustRef.current) return;
@@ -472,9 +466,9 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
     });
   }, [msgs.length, running, lastLen, liveLen]);
 
-  // keep-at-bottom: si el usuario estaba al fondo, cualquier crecimiento de
-  // layout (cards de permisos/ask_user, composer que reaparece, viewport que
-  // encoge) vuelve a pinar el scroll para no tapar la parte inferior
+  // keep-at-bottom: if the user was at the bottom, any layout growth
+  // (permission/ask_user cards, composer reappearing, viewport shrinking)
+  // re-pins the scroll so the bottom stays visible
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -488,8 +482,8 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
     return () => ro.disconnect();
   }, [cardsActive, permCards.length, helperAsks.length]);
 
-  // al volver a la pestaña (clic en la notificación, o alt-tab), el smooth
-  // puede haberse cortado en background: si íbamos pegados al fondo, reaffirma
+  // back on the tab (notification click, or alt-tab): the smooth scroll may
+  // have been cut in the background; if pinned to the bottom, re-affirm
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible" && pinnedRef.current) {
@@ -521,7 +515,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
         body: JSON.stringify({ sessionId: session.id }),
       });
     } catch {
-      /* el abort por cierre de stream también cancela */
+      /* the abort on stream closure also cancels */
     }
     // si el agente no llega a responder al cancel, cortamos el stream: el
     // finally del send libera el UI (converge al re-hidratar)
@@ -532,8 +526,8 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6 md:py-3.5">
-        {/* móvil (sidebar oculto): logo de la app a la izquierda
-            (mismo tamaño que el del sidebar para que no salte al abrir) */}
+        {/* mobile (sidebar hidden): app logo on the left
+            (same size as the sidebar one so it does not jump on open) */}
         <div className="flex shrink-0 items-center md:hidden">
           <Logo className="h-8 w-8 text-emerald" />
         </div>
@@ -584,7 +578,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
             {t("chat.running")}
           </span>
         )}
-        {/* menú de sesiones: a la derecha en móvil (h-8 = caja del logo,
+        {/* sessions menu: on the right on mobile (h-8 = logo box,
             ambos iconos quedan a la misma altura y centrados) */}
         {onMenu && (
           <button
@@ -608,7 +602,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
             <span className="text-xs">{t("chat.loadingSession")}</span>
           </div>
         ) : !session || msgs.length === 0 ? (
-          <MemoEmptyState running={running} onPick={onSend} />
+          <MemoEmptyState running={running} cwd={wstatus?.cwd} onPick={onSend} />
         ) : (
           <div className="mx-auto max-w-3xl space-y-6">
             {hiddenCount > 0 && (
@@ -689,7 +683,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
               className={
                 p.options?.length
                   ? // con opciones del agente: frase arriba y botones debajo en
-                    // una línea (rechazar a la izquierda, permitir a la derecha)
+                    // one line (reject on the left, allow on the right)
                     "flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3"
                   : "flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               }
@@ -707,7 +701,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
               </div>
               {p.options?.length ? (
                 // opciones reales del agente: rechazar a la izquierda,
-                // permitir a la derecha, en una línea a todo lo ancho
+                // allow on the right, single full-width line
                 <div className="flex w-full flex-wrap items-center gap-2">
                   <div className="flex flex-wrap gap-2">
                     {p.options
@@ -749,7 +743,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
                   </div>
                 </div>
               ) : (
-                // fallback: options llegó vacía/desconocida → deny/allow simple
+                // fallback: options arrived empty/unknown → plain deny/allow
                 <div className="flex shrink-0 gap-2">
                 <button
                   onClick={() => onPermission?.(p.reqId, false)}
@@ -849,7 +843,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
               onChange={(e) => {
                 const picked = Array.from(e.target.files ?? []);
                 setFiles((prev) =>
-                  [...prev, ...picked.filter((f) => f.size <= MAX_FILE_BYTES)].slice(0, 8)
+                  [...prev, ...picked.filter((f) => f.size <= MAX_FILE_BYTES)].slice(0, MAX_FILES)
                 );
                 e.target.value = "";
               }}
@@ -941,7 +935,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
             <span className="min-w-0 truncate">
               {wstatus?.cwd ? (
                 <>
-                  {/* móvil: solo la ruta (sin label "Working directory:") */}
+                  {/* mobile: path only (no "Working directory:" label) */}
                   <span className="hidden sm:inline">{t("chat.workDir")}: </span>
                   <span className="font-mono">{wstatus.cwd}</span>
                   {wstatus.branch ? (
@@ -981,7 +975,7 @@ function Dot({ delay }: { delay: string }) {
   );
 }
 
-/** Parsea [Resource link: file://…] (anotación del CLI para adjuntos): texto + chips 📎 */
+/** Parses "[Resource link: file://…]" (CLI annotation for attachments): text + chip 📎 */
 function userContentNodes(content: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const re = /\s*\[Resource link:\s*file:\/\/([^\]]+)\]/g;
@@ -1040,7 +1034,7 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-/** Línea meta del CLI (cajón de sastre): compactaciones, avisos de sistema... */
+/** CLI meta line (catch-all drawer): compactations, system notices… */
 function SystemLine({ content }: { content: string }) {
   return (
     <div className="flex items-center gap-1.5 overflow-hidden rounded-md border border-border/60 bg-muted/20 px-2 py-0.5 font-mono text-[10.5px] text-muted-foreground">
@@ -1049,7 +1043,7 @@ function SystemLine({ content }: { content: string }) {
   );
 }
 
-/** Bloque de comando slash: acordeón tipo terminal (como los chips de tool). */
+/** Slash command block: terminal-style accordion (like the tool chips). */
 function CommandBlock({ msg, out }: { msg: ChatMessage; out?: ChatMessage }) {
   const locale = localeOf(useLang());
   const text = out
@@ -1192,7 +1186,7 @@ function LiveBlock({ turn }: { turn: LiveTurn }) {
   const t = useT();
   const empty = !turn.reasoning && turn.parts.length === 0;
   // respuesta de un comando slash: el streaming se plega al bloque ❯ que ya
-  // pintó MessageList (texto puro, sin tools del agente)
+  // rendered by MessageList (plain text, no agent tools)
   const isCommandOut =
     turn.userPrompt?.startsWith("/") === true &&
     !turn.parts.some((p) => p.kind === "tool");
@@ -1231,7 +1225,7 @@ function LiveBlock({ turn }: { turn: LiveTurn }) {
           ) : p.kind === "system" ? (
             <SystemLine key={`s${i}`} content={p.content} />
           ) : p.kind === "reasoning" ? (
-            // tramos de razonamiento intercalados en su posición real
+            // reasoning spans interleaved at their actual position
             <Reasoning key={`r${i}`} text={p.content} open />
           ) : (
             <Content key={`x${i}`} text={p.content} />
@@ -1244,9 +1238,11 @@ function LiveBlock({ turn }: { turn: LiveTurn }) {
 
 function EmptyState({
   running,
+  cwd,
   onPick,
 }: {
   running: boolean;
+  cwd?: string;
   onPick: (t: string) => void;
 }) {
   const t = useT();
@@ -1258,7 +1254,7 @@ function EmptyState({
         </span>
         <h2 className="text-lg font-semibold">{t("chat.emptyTitle")}</h2>
         <p className="max-w-md text-sm text-muted-foreground">
-          {t("chat.emptyText", { cwd: "/workspace" })}
+          {cwd ? t("chat.emptyText", { cwd }) : t("chat.emptyTextPlain")}
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-1">

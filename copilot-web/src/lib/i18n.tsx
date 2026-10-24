@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * i18n mínimo de la POC: diccionario en/es + provider con contexto React.
- * Default: inglés (detecta es desde navigator.language). Persiste en
- * localStorage("lang"). Server-side los strings van en inglés (beta).
+ * Minimal POC i18n: en/es dictionary + provider with React context.
+ * Default: English (detects es from navigator.language). Persisted in
+ * localStorage("lang"). Server-side strings are English (beta).
  */
 declare global {
   interface Window {
@@ -46,6 +46,8 @@ const es = {
   "chat.emptyTitle": "¿En qué estás trabajando?",
   "chat.emptyText":
     "Esta sesión envía tus mensajes al Copilot CLI, que puede leer código, editar archivos y ejecutar comandos en {cwd}.",
+  "chat.emptyTextPlain":
+    "Esta sesión envía tus mensajes al Copilot CLI, que puede leer código, editar archivos y ejecutar comandos en el directorio de trabajo.",
   "chat.sug1": "Explícame la estructura de este repositorio",
   "chat.sug2": "Resume los cambios pendientes en git",
   "chat.sug3": "Escribe y ejecuta un hola mundo en Python",
@@ -139,6 +141,8 @@ const en: Record<keyof typeof es, string> = {
   "chat.emptyTitle": "What are you working on?",
   "chat.emptyText":
     "This session sends your messages to the Copilot CLI, which can read code, edit files and run commands in {cwd}.",
+  "chat.emptyTextPlain":
+    "This session sends your messages to the Copilot CLI, which can read code, edit files and run commands in the working directory.",
   "chat.sug1": "Explain the structure of this repository",
   "chat.sug2": "Summarize pending git changes",
   "chat.sug3": "Write and run a hello world in Python",
@@ -204,23 +208,23 @@ const en: Record<keyof typeof es, string> = {
 export const dict: Record<Lang, Record<string, string>> = { en, es };
 
 export function detectLang(): Lang {
-  // 1) flag del launcher (--lang, inyectada por el server en window.__WEB_LANG)
+  // 1) launcher flag (--lang, injected by the server into window.__WEB_LANG)
   if (typeof window !== "undefined") {
     const v = window.__WEB_LANG;
     if (v === "en" || v === "es") return v;
   }
-  // 2) elección previa del usuario (legacy del toggle eliminado)
+  // 2) previous user choice (legacy of the removed toggle)
   try {
     const v = localStorage.getItem("lang");
     if (v === "en" || v === "es") return v;
   } catch {}
-  // 3) idioma del navegador (por defecto)
+  // 3) browser language (default)
   if (typeof navigator !== "undefined" && navigator.language?.startsWith("es"))
     return "es";
   return "en";
 }
 
-/** formato simple con {vars} */
+/** simple {vars} formatting */
 function fmt(s: string, vars?: Record<string, string | number>): string {
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
@@ -235,7 +239,7 @@ export function LangProvider({
 }) {
   const [lang, setLang] = useState<Lang>("en");
   useEffect(() => setLang(detectLang()), []);
-  // cambio de idioma en vivo desde Config (persistido + re-detección)
+  // live language change from Config (persisted + re-detection)
   useEffect(() => {
     const rescan = () => setLang(detectLang());
     window.addEventListener("copilot-web:lang", rescan);
@@ -249,11 +253,11 @@ export function LangProvider({
   );
 }
 
-/** tipo del control de idioma en Config: auto (navegador) o fijo */
+/** language control type in Config: auto (browser) or fixed */
 export type LangChoice = "auto" | Lang;
 
-/** selección del usuario en Config; «auto» borra la preferencia y re-detecta.
- * Dispara un evento que el LangProvider escucha → cambio sin recargar. */
+/** User choice in Config; "auto" clears the preference and re-detects.
+ * Dispatches an event the LangProvider listens to → change without reload. */
 export function setLangChoice(c: LangChoice) {
   try {
     if (c === "auto") localStorage.removeItem("lang");
@@ -262,7 +266,7 @@ export function setLangChoice(c: LangChoice) {
   window.dispatchEvent(new Event("copilot-web:lang"));
 }
 
-/** elección actual para marcar el control activo en Config */
+/** current choice to mark the active control in Config */
 export function getLangChoice(): LangChoice {
   try {
     const v = localStorage.getItem("lang");
@@ -275,7 +279,7 @@ export function useLang(): Lang {
   return useContext(Ctx);
 }
 
-/** hook de traducción: t("key", vars) */
+/** translation hook: t("key", vars) */
 export function useT() {
   const lang = useLang();
   return (
@@ -284,7 +288,7 @@ export function useT() {
   ): string => fmt(dict[lang]?.[key] ?? dict.en[key] ?? key, vars);
 }
 
-/** locale para fechas según idioma */
+/** date locale depending on the language */
 export function localeOf(lang: Lang): string {
   return lang === "es" ? "es-ES" : "en-US";
 }

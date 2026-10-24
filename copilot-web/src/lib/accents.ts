@@ -1,5 +1,5 @@
-/** Paleta del modal de Config: sin infinito de colores; el hue lo elige el
- * usuario y el brillo (500 claro / 400 oscuro) se deriva solo en CSS. */
+/** Palette for the Config modal: no infinite color list; the user picks the
+ * hue and the brightness (500 light / 400 dark) is derived by CSS alone. */
 export type Accent = {
   id: string;
   light: string;
@@ -25,7 +25,7 @@ export const ACCENTS: Accent[] = [
   { id: "yellow", light: "#eab308", dark: "#facc15" },
 ];
 
-/** color de vista previa del swatch según el modo efectivo */
+/** swatch preview color depending on the effective mode */
 export function accentColor(id: string, dark: boolean): string {
   const a = ACCENTS.find((x) => x.id === id);
   return dark ? a?.dark ?? "#34d399" : a?.light ?? "#10b981";

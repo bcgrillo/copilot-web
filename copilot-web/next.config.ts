@@ -1,16 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Deploy tras proxy de CodePods: el proxy STRIPPEA el prefijo público
-  // (/api/proxy/copilot-web/copilot-web), así que el routing del server va
-  // en raíz, pero el navegador necesita URLs con el prefijo público:
-  //  - ASSET_PREFIX: prefija /_next/* en el HTML servido
-  //  - NEXT_PUBLIC_BASE_PATH: prefija los fetch del cliente (src/lib/api.ts)
+  // Deploy behind a CodePods proxy: the proxy STRIPS the public prefix
+  // (/api/proxy/copilot-web/copilot-web), so server routing runs at the
+  // root, but the browser needs URLs carrying the public prefix:
+  //  - ASSET_PREFIX: prefixes /_next/* in served HTML
+  //  - NEXT_PUBLIC_BASE_PATH: prefixes client fetches (src/lib/api.ts)
   assetPrefix: process.env.ASSET_PREFIX || undefined,
-  // canonicaliza CON barra final: la URL que expone CodePods casa sin
-  // redirecciones que el proxy no resolvería
+  // canonicalizes with a trailing slash: the URL CodePods exposes matches with
+  // redirects the proxy could not resolve
   trailingSlash: true,
-  // 1 worker de build (el contenedor tiene pids.max=256 y vivimos al límite)
+  // 1 build worker (container has pids.max=256; we run close to the limit)
   experimental: { cpus: 1 },
 };
 

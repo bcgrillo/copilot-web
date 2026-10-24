@@ -35,11 +35,11 @@ daemon ACP: copilot --acp --port 3222 [--allow-all-*] [--model m]  ⇄  Copilot
   --lang (src/lib/i18n.tsx, sin toggle).
 - i18n: COPILOT_WEB_LANG (script pre-hidratación en layout) → localStorage legacy →
   navigator → "en". Paridad 1:1 de claves es/en.
-- MCP helper (rama feature/mcp-helper): launcher escribe /tmp/copilot-web-helper-<port>.json
+- MCP helper: el launcher escribe /tmp/copilot-web-helper-<port>.json
   y añade --additional-mcp-config @fichero al daemon; `mcp/ask-user.mjs` (MCP stdio,
   tool ask_user → POST a la web + long-poll); endpoints /api/helper/* con store RAM
   (`src/lib/helperAsk.ts`); card azul HelperAskCard en Chat mientras corre el turno.
-  Detalles y decisiones: docs/mcp-helper.md.
+  Detalles y decisiones: docs/mcp-helper.md. Integrado en dev desde v0.0.31-32.
 
 ### Reglas transversales
 - Zero-materialized data; límites ACP documentados en decisions.md.
@@ -47,4 +47,19 @@ daemon ACP: copilot --acp --port 3222 [--allow-all-*] [--model m]  ⇄  Copilot
 - trailingSlash: true → rutas de API siempre con slash final.
 - Publicación: servicio web de CodePods (puerto 3100 en el pod actual).
 - Pipeline GitHub: release workflow (npm pack del launcher + scripts/install.sh) en
-  preparación; rama MCP helper aparte (feature/mcp-helper, tool ask_user).
+  preparación; el helper MCP está fusionado en dev (v0.0.31-32).
+
+### Tests (vitest)
+- Suite local en `copilot-web`: `npm run test` (= `vitest run`; watch:
+  `./node_modules/.bin/vitest`). Config en `vitest.config.ts` (alias `@` → src,
+  entorno node, tests en `src/**/*.test.{ts,tsx}`).
+- La capa ACP queda MOCKEADA en todos los tests (`vi.mock("@/lib/acp")` y
+  `vi.mock("./acp")`): los tests NUNCA tocan el daemon real del :3222 ni
+  sesiones del CLI. Solo se ejercitan lógica pura + el server de turno SSE con
+  callbacks invocados a mano.
+- Cobertura: `lib/materialize`, `lib/content`, `lib/store`, `lib/copilotStore`
+  (merge overlay+CLI), `lib/helperAsk` (ventana 5 min), `lib/cw`, `lib/api`
+  (base-path via resetModules), `lib/accents`, y `api/chat/route` (404/400/429/
+  adjuntos, orden de eventos SSE, filtros replay+Info, cards de permiso,
+  guard 20 s con fake timers).
+- CI (badge "tests") sigue pendiente: cuando exista el pipeline, mismo comando.

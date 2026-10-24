@@ -1,9 +1,9 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* dark por CLASE (.dark en <html>) NO por media query: el toggle del tema
- * (auto/claro/oscuro) escribe .dark con themeInit; con media query, un móvil
- * con sistema claro + web en dark manual perdería dark:prose-invert, etc. */
+/* dark by CLASS (.dark on <html>), NOT by media query: the theme toggle
+ * (auto/light/dark) writes .dark via themeInit; with a media query, a mobile
+ * with a light system + web in manual dark would lose dark:prose-invert, etc. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
@@ -79,7 +79,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* burbuja del usuario: gris sutil según tema (12) — no blanco/negro */
+/* user bubble: subtle theme-aware gray (12) — not white/black */
 :root {
   --user-bubble: #e4e4e7;
 }
@@ -110,12 +110,12 @@ textarea {
   scrollbar-color: var(--border) transparent;
 }
 
-/* Regla general de interacción: botones, links, chips y summary → pointer */
+/* General interaction rule: buttons, links, chips and summary → pointer */
 
 /* ===== Accent (Config): data-accent en <html>; emerald por defecto =====
- * Sin fin de colores: 16 tonos en 2 filas de 8; cada uno deriva automáticamente
- * el brillo mínimo por tema (500 en claro, 400 en oscuro → contraste garantizado
- * con --primary-foreground). Todas las clases *-emerald leen var(--color-emerald). */
+ * No endless colors: 16 hues in 2 rows of 8; each automatically derives its
+ * per-theme brightness (500 light / 400 dark → guaranteed contrast against
+ * --primary-foreground). All *-emerald classes read var(--color-emerald). */
 html[data-accent="green"]   { --emerald: #22c55e; }
 html[data-accent="lime"]    { --emerald: #84cc16; }
 html[data-accent="teal"]    { --emerald: #14b8a6; }

@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * ask-user — MCP stdio helper para copilot-web (scaffold v0).
+ * ask-user — MCP stdio helper for copilot-web (v0 scaffold).
  *
- * Registro (sin tocar config global):
+ * Registration (without touching global config):
  *   copilot mcp add copilot-web-helper -- node /abs/path/copilot-web/mcp/ask-user.mjs
- * o por sesión, desde el launcher del daemon:
+ * or per daemon, from the daemon launcher:
  *   --additional-mcp-config @/tmp/copilot-web-helper.json
  *
- * Protocolo: JSON-RPC delimitado por líneas (stdio). Tools:
- *   ask_user  — hace POST a la web con la pregunta y espera la respuesta
- *               del usuario (long-poll), devolviendo el texto como content.
+ * Protocol: line-delimited JSON-RPC (stdio). Tools:
+ *   ask_user  — POSTs the question to the web and waits for the user's
+ *               answer (long-poll), returning the text as content.
  *
- * La web muestra la card de pregunta en la(s) sesión(es) con turno en
- * curso (v0); diseño y decisiones en docs/mcp-helper.md.
+ * The web shows the question card on the session(s) with a turn in
+ * progress (v0); design and decisions in docs/mcp-helper.md.
  */
 import { createInterface as createReadline } from "node:readline";
 import process from "node:process";
@@ -119,9 +119,9 @@ async function handle(msg) {
 }
 
 /**
- * POSTea la pregunta a la web y hace long-poll de la respuesta.
- * (Los endpoints de la web llegan en la siguiente iteración; v0
- * falla honesto con un error claro para el agente.)
+ * POSTs the question to the web and long-polls for the answer.
+ * (The web endpoints land in the next iteration; v0 fails honestly
+ * with a clear error for the agent.)
  */
 async function askUser(args) {
   const res = await fetch(`${WEB_URL}/api/helper/ask`, {

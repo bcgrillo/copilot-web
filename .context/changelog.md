@@ -1,3 +1,22 @@
+## v0.0.33 (sin publicar) — Refactor "publish-ready" + suite de tests (feature/publish-ready)
+- Refactor completo del código (commit 028ae46): comentarios y strings del
+  server en EN, nombres/estructura revisados; `lib/content.ts` (helpers de
+  extracción compartidos live/hidratación) y `lib/limits.ts` (MAX_FILES=8,
+  5 MB, guard 20 s) nuevos; 8 dependencias sin uso eliminadas del
+  package.json (framer-motion, shiki, sonner, remeda, CVA, radix
+  collapsible/slot/toast). UI copy i18n intacta (dict es/es es contenido).
+- Suite de tests con vitest (60 tests, 8 ficheros): lib entera (materialize,
+  content, store, copilotStore, helperAsk, cw, api, accents) + server SSE del
+  turno (`api/chat/route`): 404/400/429/adjuntos, orden de eventos SSE
+  (message_start/delta/tool/permission/message/done), filtros replay+Info,
+  cards de permiso y guard de 20 s con fake timers. La capa ACP queda
+  SIEMPRE mockeada (`vi.mock`) — los tests no tocan el daemon ni sesiones
+  reales.
+- Fix real descubierto por los tests: `isObj` en content.ts/materialize.ts
+  daba `""` con listas de bloques (los arrays son objetos) — corregido;
+  `textContentOf` acepta strings planos de forma defensiva.
+- `npm run test` añadido al package.json.
+
 ## v0.0.32 — Header móvil con logo + lote de ajustes (feature/mcp-helper)
 - Header en móvil (sidebar oculto): logo de la app a la izquierda (h-8, mismo
   tamaño que el del sidebar para que no salte al abrir) y menú de sesiones a la

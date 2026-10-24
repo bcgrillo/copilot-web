@@ -1,20 +1,22 @@
 /**
- * Cliente ACP (Agent Client Protocol) para el agente `copilot --acp --port`.
+ * ACP (Agent Client Protocol) client for the `copilot --acp --port` agent.
  *
- * `copilot --acp --port N` sirve JSON-RPC 2.0 NDJSON sobre TCP crudo
- * (protocolo idéntico a modo stdio; verificado en copilot 1.0.80 aunque
- * --help no liste el flag). Este módulo mantiene UN socket persistente a
- * un proceso agente independiente (detached): al reiniciar la app Next, el
- * agente y sus sesiones ACP siguen vivos y se retoman con session/load.
+ * `copilot --acp --port N` serves JSON-RPC 2.0 NDJSON over raw TCP
+ * (protocol identical to the stdio mode; verified against copilot 1.0.80
+ * even though --help does not list the flag). This module keeps ONE
+ * persistent socket to a standalone agent process (detached): when the Next
+ * app restarts, the agent and its ACP sessions stay alive and resume via
+ * session/load.
  */
 import net from "net";
 import { spawn } from "child_process";
+import type { AvailableCommand } from "@/lib/types";
 
 export const CHAT_CWD = process.env.CHAT_CWD || "/workspace";
 const ACP_PORT = Number(process.env.ACP_PORT || 3222);
-/** argumentos extra/override para el spawn del daemon (por el launcher CLI);
- * "" = sin flags (el CLI pregunta permisos por ACP y la web los resuelve con
- * las cards allow/deny); "allow-all" se conserva como compat del POC antiguo. */
+/** Extra/override args for the daemon daemon spawn (from the launcher CLI);
+ * "" = no flags (the CLI asks permissions over ACP and the web resolves them
+ * with allow/deny cards); "allow-all" is kept as legacy POC compatibility. */
 const RAW_ARGS = process.env.COPILOT_ACP_ARGS || "";
 const COPILOT_ARGS =
   RAW_ARGS.trim() === "allow-all"
@@ -33,14 +35,14 @@ type JsonRpcMsg = {
 type Agent = {
   sock: net.Socket | null;
   pending: Map<number, (m: JsonRpcMsg) => void>;
-  known: Set<string>; // sesiones creadas/cargadas en ESTA conexión
-  loading: Set<string>; // session/load en vuelo (replay del histórico)
+  known: Set<string>; // sessions created/loaded in THIS connection
+  loading: Set<string>; // session/load in flight (history replay)
   idSeq: number;
   connecting: Promise<void> | null;
   initDone: boolean;
 };
 
-// Con globalThis sobrevive a la recarga de módulos de Next
+// globalThis makes these singletons survive Next module reloads
 const g = globalThis as unknown as { __acpAgent?: Agent };
 const agent: Agent =
   g.__acpAgent ?? (g.__acpAgent = {
@@ -55,8 +57,8 @@ const agent: Agent =
 
 const updateListeners = new Map<string, Set<(update: AcpUpdate) => void>>();
 
-// Cache de comandos slash por sesión (snapshot available_commands_update):
-// sobrevive a la recarga de módulos de Next vía globalThis
+// Slash-command cache per session (available_commands_update snapshot):
+// survives Next module reloads via globalThis
 type CmdCache = {
   bySession: Map<string, AvailableCommand[]>;
   last: AvailableCommand[];
@@ -66,27 +68,25 @@ const cmdCache: CmdCache =
   gc.__acpCmdCache ??
   (gc.__acpCmdCache = { bySession: new Map(), last: [] });
 
-// Permisos interactivos: la web muestra una card y el turno espera la
-// respuesta del usuario. Sin auto-concesión por timer NI fallback de
-// aprobación al morir el stream: un permiso nunca se resuelve solo
-// (decisión de seguridad del producto).
+// Interactive permissions: the web shows a card and the turn waits for the
+// user's answer. No auto-grant timers and no auto-approval when the stream
+// dies: a permission never resolves itself (product security decision).
 type PendingPerm = {
   sessionId: string;
   allowId: string;
   denyId: string;
   toolCallId?: string;
   title?: string;
-  /** opciones crudas que ofreció el agente (p.ej. allow_once/always, reject_once) */
+  /** raw options offered by the agent (e.g. allow_once/always, reject_once) */
   options: { optionId: string; kind: string; name?: string }[];
-  timer?: ReturnType<typeof setTimeout>;
   respond: (optionId: string) => void;
 };
 const gPerms = globalThis as unknown as { __acpPerms?: Map<number, PendingPerm> };
 const pendingPerms = gPerms.__acpPerms ?? (gPerms.__acpPerms = new Map());
 
 /**
- * Permiso pendiente de una sesión (para volver a mostrar la card tras un
- * reload/corte del stream, vía el 429 "busy" del chat). Nunca resuelve nada.
+ * Pending permission of a session (to re-show the card after a
+ * reload/stream cut, via the chat 429 "busy"). Never resolves anything.
  */
 export function pendingPermissionFor(
   sessionId: string
@@ -109,17 +109,17 @@ export function pendingPermissionFor(
 }
 
 function emitPermission(sid: string, u: AcpUpdate & { reqId?: number }) {
-  // el log de sesión también recibe los eventos sintéticos de permiso:
-  // así la materialización conserva la meta (denegado...) aunque el
-  // replay del CLI no la incluya
+  // the session log also receives the synthetic permission events: that way
+  // materialization keeps the metadata (denied…) even when the CLI replay
+  // does not include it
   logUpdate(sid, u as AcpUpdate);
   for (const cb of updateListeners.get(sid) ?? []) cb(u);
 }
 
 /**
- * Turno en vuelo por sesión (memoria del server, no persiste). Fuente única
- * para el 429 "busy" del chat y para que el GET de sesión exponga `running`
- * (turno vivo en el daemon aunque el stream del cliente haya muerto).
+ * Turn in flight per session (server memory, never persisted). Single source
+ * for the chat 429 "busy" and for the session GET to expose `running` (live
+ * turn in the daemon even when the client stream died).
  */
 const gRunning = globalThis as unknown as {
   __acpRunning?: Set<string>;
@@ -128,17 +128,18 @@ export const runningTurns: Set<string> =
   gRunning.__acpRunning ?? (gRunning.__acpRunning = new Set());
 
 /**
- * Log por sesión de updates ACP (replay de session/load + updates en vivo
- * + eventos sintéticos de permiso), en RAM. Fuente única de materialización
- * del histórico: el equivalente ligero del events.jsonl del CLI, pero SOLO
- * por canal ACP (no se lee ningún fichero del CLI).
+ * Per-session log of ACP updates (session/load replay + live updates +
+ * synthetic permission events), in RAM. Single source for history
+ * materialization: the lightweight equivalent of the CLI's events.jsonl, but
+ * ACP channel ONLY (no CLI files are ever read).
  */
 const gLog = globalThis as unknown as {
   __acpSessionLog?: Map<string, AcpUpdate[]>;
 };
-/** Chunk "Info: <ruta>" que el daemon ACP inyecta como texto tras crear o
- * editar un fichero: duplica lo que ya enseña el chip de la tool, así que se
- * oculta en presentación (vivo y materialize) sin alterar el stream. */
+/** "Info: <path>" chunk the ACP daemon injects as text after creating or
+ * editing a file: duplicates what the tool chip already shows, so it is
+ * hidden at presentation layer (live and materialize) without touching the
+ * stream. */
 export const DAEMON_INFO_RE = /^Info:\s*\S+\s*$/;
 
 export const sessionLog: Map<string, AcpUpdate[]> =
@@ -171,8 +172,8 @@ export function resetSessionLog(sessionId: string) {
 }
 
 /**
- * Garantiza el log de una sesión: si no existe, la carga (session/load,
- * que replaya el histórico completo como updates y se captura aquí).
+ * Makes sure a session has a log: if not, loads it (session/load, which
+ * replays the whole history as updates and gets captured here).
  */
 export async function materializeSession(sessionId: string): Promise<void> {
   if (sessionLog.has(sessionId)) return;
@@ -183,12 +184,11 @@ export async function materializeSession(sessionId: string): Promise<void> {
   await loadSession(sessionId);
 }
 
-import type { AvailableCommand } from "@/lib/types";
 
 export type AcpUpdate = {
   sessionUpdate: string;
-  /** sellado de hora de llegada SOLO en updates en vivo (cache RAM);
-   * el replay de session/load no lo trae (ACP no da timestamps) */
+  /** arrival timestamp, stamped ONLY on live updates (RAM cache);
+   * the session/load replay does not include it (ACP has no timestamps) */
   ts?: string;
   [k: string]: unknown;
 };
@@ -245,12 +245,12 @@ function wireSocket(s: net.Socket) {
         const params = (m.params ?? {}) as { sessionId?: string; update?: AcpUpdate };
         const sid = params.sessionId ?? "";
         const u = params.update ?? { sessionUpdate: "unknown" };
-        // log por sesión para materialización: replay (en carga) y updates
-        // en vivo de sesiones que ya conocemos
-        if (agent.loading.has(sid)) logUpdate(sid, u); // replay: sin hora
-        else if (agent.known.has(sid)) logUpdate(sid, u, true); // vivo: sella llegada
-        // snapshot de comandos slash: cacheamos por sesión (y global como
-        // semilla para sesiones cargadas cuyo replay no incluya snapshot)
+        // per-session log for materialization: replay (at load) and live
+        // updates of sessions we already know
+        if (agent.loading.has(sid)) logUpdate(sid, u); // replay: no timestamp
+        else if (agent.known.has(sid)) logUpdate(sid, u, true); // live: stamped
+        // slash-command snapshot: cached per session (and globally as a seed
+        // for loaded sessions whose replay lacks a snapshot)
         if (u.sessionUpdate === "available_commands_update") {
           const cmds = (u.availableCommands ?? []) as AvailableCommand[];
           if (cmds.length && sid) {
@@ -268,22 +268,22 @@ function wireSocket(s: net.Socket) {
         };
         const reqId = typeof m.id === "number" ? m.id : -1;
         const title = p.toolCall?.title || p.kind || "tool";
-        // opciones tal y como las ofrece el agente (allow_once/allow_always/
-        // reject_once/reject_always...): la web pinta cada una y devuelve el
-        // optionId elegido
+        // options as offered by the agent (allow_once/allow_always/
+        // reject_once/reject_always…): the web renders each one and sends
+        // back the chosen optionId
         const options: { optionId: string; kind: string; name?: string }[] =
           (p.options ?? [])
             .filter((o) => o && o.optionId && o.kind)
             .map((o) => ({ optionId: o.optionId!, kind: o.kind!, name: o.name }));
-        // IDs de las opciones que envía el agente (allow / reject), para el
-        // atajo booleano (compat y fallback si el agente no lista opciones)
+        // ids of the boolean shortcuts the agent sends (allow / reject), for
+        // the legacy allow/deny shortcut (and fallback when no options list)
         const allowId =
           p.options?.find((o) => o.kind === "allow_once" || o.kind === "allow_always")
             ?.optionId ?? "allow_once";
         const denyId =
           p.options?.find((o) => o.kind?.startsWith("reject"))?.optionId ??
           "reject_once";
-        // ResultPermission ACP: { outcome: { outcome: "selected", optionId } }
+        // ACP ResultPermission: { outcome: { outcome: "selected", optionId } }
         const respond = (optionId: string) => {
           try {
             s.write(
@@ -297,10 +297,10 @@ function wireSocket(s: net.Socket) {
             );
           } catch {}
         };
-        // sin id de petición (caso raro): no hay forma de responder → el
-        // permiso queda pendiente en el daemon; NUNCA se autoriza solo
+        // no request id (rare): there is no way to answer → the permission
+        // stays pending in the daemon. It is NEVER auto-authorized
         if (reqId < 0) {
-          // noop deliberado: seguridad primero (decisión de producto)
+          // deliberate noop: safety first (product decision)
         } else {
           pendingPerms.set(reqId, {
             sessionId: p.sessionId ?? "",
@@ -343,7 +343,7 @@ function wireSocket(s: net.Socket) {
   s.on("error", () => {});
 }
 
-/** Conecta (y si hace falta, lanza) el proceso agente. */
+/** Connects (and spawns if needed) the agent process. */
 export function ensureAgent(): Promise<void> {
   if (agent.sock && !agent.sock.destroyed && agent.initDone) return Promise.resolve();
   if (agent.connecting) return agent.connecting;
@@ -399,7 +399,7 @@ export type AgentSessionInfo = {
   cwd?: string;
 };
 
-/** Lista oficial de sesiones del agente (sessionCapabilities.list, ACP). */
+/** Official list of the agent's sessions (sessionCapabilities.list, ACP). */
 export async function listAgentSessions(): Promise<AgentSessionInfo[]> {
   await ensureAgent();
   const r = await acpRequest("session/list", {});
@@ -408,7 +408,7 @@ export async function listAgentSessions(): Promise<AgentSessionInfo[]> {
   return res?.sessions ?? [];
 }
 
-/** Comandos slash disponibles de la sesión (fallback: último snapshot global). */
+/** Slash commands available for the session (fallback: last global snapshot). */
 export function listAvailableCommands(sessionId?: string): AvailableCommand[] {
   return (sessionId && cmdCache.bySession.get(sessionId)) || cmdCache.last;
 }
@@ -417,10 +417,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let probeInFlight: Promise<void> | null = null;
 
 /**
- * Bootstrap del snapshot de comandos tras un reinicio del servidor web: el
- * cache es in-memory y el daemon solo lo manda en session/new → una sesión
- * desechable repuebla cmdCache (las sesiones sin turnos no salen en
- * session/list, no ensucia la sidebar).
+ * Bootstraps the command snapshot after a web server restart: the cache is
+ * in-memory and the daemon only sends it on session/new → a throwaway
+ * session repopulates cmdCache (zero-turn sessions do not show up in
+ * session/list, so the sidebar stays clean).
  */
 export async function ensureCommands(): Promise<AvailableCommand[]> {
   if (cmdCache.last.length) return cmdCache.last;
@@ -430,7 +430,7 @@ export async function ensureCommands(): Promise<AvailableCommand[]> {
         await createAgentSession();
         for (let i = 0; i < 20 && !cmdCache.last.length; i++) await sleep(100);
       } catch {
-        /* daemon no disponible: paleta vacía hasta el próximo turno vivo */
+        /* daemon unavailable: empty palette until the next live turn */
       }
     })();
   await probeInFlight;
@@ -438,24 +438,25 @@ export async function ensureCommands(): Promise<AvailableCommand[]> {
   return cmdCache.last;
 }
 
-/** Crea una sesión ACP y devuelve su id (el mismo que usa el agente). */
+/** Creates an ACP session and returns its id (the same one the agent uses). */
 export async function createAgentSession(): Promise<string> {
   await ensureAgent();
   const r = await acpRequest("session/new", { cwd: CHAT_CWD, mcpServers: [] });
   if (r.error) throw new Error("session/new: " + (r.error.message || JSON.stringify(r.error)));
   const sessionId = (r.result as { sessionId?: string })?.sessionId;
-  if (!sessionId) throw new Error("session/new: respuesta sin sessionId");
+  if (!sessionId) throw new Error("session/new: response without sessionId");
   agent.known.add(sessionId);
   sessionLog.set(sessionId, sessionLog.get(sessionId) ?? []);
   return sessionId;
 }
 
 /**
- * Carga una sesión existente en el agente (contexto). Si la sesión ya está
- * materializada el agente responde "already loaded": éxito. La respuesta
- * replaya el histórico como updates → quien suscriba debe filtrar por
- * loadingIds (ver subscribe). El replay se captura en sessionLog (el log
- * previo se descarta: el replay reemplaza cualquier materialización parcial).
+ * Loads an existing session into the agent (context). If the session is
+ * already materialized the agent answers "already loaded": success. The
+ * response replays the history as updates → whoever subscribes must filter
+ * by loadingIds (see subscribe). The replay is captured into sessionLog
+ * (the previous log is discarded: the replay replaces any partial
+ * materialization).
  */
 async function loadSession(sessionId: string): Promise<void> {
   sessionLog.delete(sessionId);
@@ -486,12 +487,12 @@ export function isLoading(sessionId: string): boolean {
   return agent.loading.has(sessionId);
 }
 
-/** session/prompt con re-load lazy del contexto si hace falta.
- * userText: texto del usuario real (chat) — el daemon no ecoa
- * user_message_chunk en vivo (solo en el replay de session/load), así que
- * lo registramos sintéticamente en el sessionLog para materializar la
- * burbuja caliente. loadSession limpia el log antes del replay, así que
- * nunca duplica. Las inyecciones slash (rename/delete) NO lo pasan. */
+/** session/prompt with lazy context reload if needed.
+ * userText: the real user (chat) text — the daemon does not echo
+ * user_message_chunk live (only in the session/load replay), so we register
+ * it synthetically in the sessionLog to materialize the hot bubble.
+ * loadSession clears the log before the replay, so it never duplicates.
+ * Slash injections (rename/delete) do NOT pass it. */
 export async function prompt(
   sessionId: string,
   blocks: unknown[],
@@ -525,7 +526,7 @@ export async function closeAgentSession(sessionId: string): Promise<void> {
   agent.known.delete(sessionId);
 }
 
-/** Sesión ops dedicada para comandos slash de gestión (delete/rename...). */
+/** Dedicated ops session for slash management commands (delete/rename…). */
 const gOps = globalThis as unknown as {
   __acpOpsSid?: string;
   __acpOpsChain?: Promise<unknown>;
@@ -539,9 +540,9 @@ async function opsSession(): Promise<string> {
 }
 
 /**
- * prompt de administración en la sesión ops, serializado (un comando en
- * vuelo a la vez). Las sesiones sin turnos no salen en session/list (el
- * CLI no las lista), así que la sesión ops no contamina la sidebar.
+ * Admin prompt on the ops session, serialized (one command in flight at a
+ * time). Zero-turn sessions do not show up in session/list (the CLI does
+ * not list them), so the ops session never pollutes the sidebar.
  */
 export function adminPrompt(text: string): Promise<{
   error?: { code: number; message: string };
@@ -559,9 +560,9 @@ export function adminPrompt(text: string): Promise<{
   return chain;
 }
 
-/** Responde una solicitud de permiso pendiente desde la web.
- * decision: boolean (atajo allow/deny, compat) o el optionId exacto que
- * ofreció el agente (allow_always, reject_once, ...). */
+/** Answers a pending permission request from the web.
+ * decision: boolean (allow/deny shortcut, legacy) or the exact optionId
+ * offered by the agent (allow_always, reject_once, …). */
 export function respondPermission(
   reqId: number,
   decision: boolean | string
@@ -577,7 +578,6 @@ export function respondPermission(
     choice = decision ? p.allowId : p.denyId;
   }
   pendingPerms.delete(reqId);
-  clearTimeout(p.timer);
   emitPermission(p.sessionId, {
     sessionUpdate: "permission_resolved",
     reqId,

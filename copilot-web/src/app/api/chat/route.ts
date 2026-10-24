@@ -11,25 +11,23 @@ import {
   cancelSession,
   pendingPermissionFor,
   DAEMON_INFO_RE,
+  runningTurns as running,
   type AcpUpdate,
 } from "@/lib/acp";
-import { cleanToolOut } from "@/lib/materialize";
+import {
+  cleanToolOutput,
+  textContentOf,
+  textOfParts,
+  toolInputDetail,
+} from "@/lib/content";
+import { MAX_FILES, MAX_FILE_BYTES, FIRST_UPDATE_TIMEOUT_MS } from "@/lib/limits";
 import type { Attachment, AvailableCommand, MessagePart, ToolStep } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
-// una ejecución por sesión a la vez
-import { runningTurns as running } from "@/lib/acp";
-
-const MAX_FILES = 8;
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
-
 type SSEEvent = { type: string; data: Record<string, unknown> };
-
-const textOf = (parts: MessagePart[]) =>
-  parts.flatMap((p) => (p.kind === "text" ? [p.content] : [])).join("");
 
 const IMG_MIME: Record<string, string> = {
   png: "image/png",
@@ -41,9 +39,9 @@ const IMG_MIME: Record<string, string> = {
   bmp: "image/bmp",
 };
 
-// Bloques ACP del prompt: el texto del usuario + cada adjunto como
-// resource_link con URI file:// real. El agente lee los ficheros con su
-// propia tool al procesar (verificado E2E: "Viewing <file>").
+// ACP prompt blocks: the user's text plus each attachment as a resource_link
+// with a real file:// URI. The agent reads the files with its own tool while
+// processing (verified E2E: "Viewing <file>").
 async function buildPromptBlocks(
   message: string,
   attachments: Attachment[],
@@ -54,13 +52,13 @@ async function buildPromptBlocks(
     const buf = Buffer.from(att.content || "", "base64");
     if (buf.length === 0) continue;
     if (buf.length > MAX_FILE_BYTES) {
-      throw new Error(`"${att.name}" supera 5 MB (límite POC)`);
+      throw new Error(`"${att.name}" exceeds 5 MB (upload limit)`);
     }
     const safe =
       path
         .basename(att.name || "")
         .replace(/[^\w.\- ()]+/g, "_")
-        .slice(0, 120) || `adjunto-${i}`;
+        .slice(0, 120) || `attachment-${i}`;
     const file = path.join(attDir, safe);
     await fs.writeFile(file, buf);
     const ext = path.extname(safe).slice(1).toLowerCase();
@@ -87,9 +85,9 @@ export async function POST(req: Request) {
   if (!message || !message.trim())
     return Response.json({ error: "Empty message" }, { status: 400 });
   if (running.has(sessionId)) {
-    // la sesión ya está procesando otro mensaje: devolvemos también el
-    // permiso pendiente si lo hay, para poder re-mostrar la card (el turno
-    // original sigue vivo en el daemon y ningún permiso se resuelve solo)
+    // the session is already processing another message: return the pending
+    // permission too (if any) so the card can be re-displayed — the original
+    // turn keeps running in the daemon and no permission resolves itself
     const pending = pendingPermissionFor(sessionId);
     return Response.json(
       {
@@ -112,7 +110,7 @@ export async function POST(req: Request) {
   } catch (e) {
     fs.rm(attDir, { recursive: true, force: true }).catch(() => {});
     return Response.json(
-      { error: `Adjunto inválido: ${e instanceof Error ? e.message : e}` },
+      { error: `Invalid attachment: ${e instanceof Error ? e.message : e}` },
       { status: 400 }
     );
   }
@@ -124,8 +122,8 @@ export async function POST(req: Request) {
     start(controller) {
       let closed = false;
       let doneSent = false;
-      // guarda anti-colgado: si la sesión está en uso por otro driver (CLI)
-      // el prompt queda en cola y el stream no produce nada → avisar y soltar
+      // hang guard: if the session is busy in another driver (CLI) the prompt
+      // gets queued and the stream produces nothing → warn and drop
       let firstUpdateSeen = false;
       let unsub: (() => void) | null = null;
 
@@ -134,7 +132,7 @@ export async function POST(req: Request) {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
         } catch {
-          /* stream ya cerrado */
+          /* stream already closed */
         }
       };
 
@@ -146,12 +144,12 @@ export async function POST(req: Request) {
 
       const finish = (keepRunning = false) => {
         closed = true;
-        // keepRunning: stream muerto (reload/navegación) pero el turno sigue
-        // en el daemon; running se libera cuando el prompt termine en su finally
+        // keepRunning: the stream died (reload/navigation) but the turn keeps
+        // running in the daemon; running is released when the prompt's finally fires
         if (!keepRunning) running.delete(session.id);
-        // SIN fallback de permisos: un permiso pendiente nunca se resuelve
-        // solo (decisión de seguridad); la card se vuelve a ofrecer vía el
-        // 429 "busy" con pendingPermissionFor(session.id)
+        // NO permission fallback: a pending permission never resolves itself
+        // (security decision); the card is re-offered via the 429 "busy" with
+        // pendingPermissionFor(session.id)
         unsub?.();
         unsub = null;
         fs.rm(attDir, { recursive: true, force: true }).catch(() => {});
@@ -167,9 +165,9 @@ export async function POST(req: Request) {
       void (async () => {
       let msgId: string | null = null;
       let streamStarted = false;
-      // timeline ordenado: tramos de texto y razonamiento alternados con tool calls
+      // ordered timeline: text/reasoning segments interleaved with tool calls
       const parts: MessagePart[] = [];
-        // tools cuyo fallo fue un permiso denegado: para titular "(denegado)"
+        // tool calls that failed because a permission was denied: to title them "(denied)"
         const deniable = new Set<string>();
 
         const updateToolPart = (toolCallId: unknown, st: string) => {
@@ -194,49 +192,31 @@ export async function POST(req: Request) {
             }
           }
           if (target && target.kind === "tool") {
-            // failed ≡ error (fallo real); un error ya marcado nunca se degrada
+            // failed ≡ error (real failure); an already-errored chip never downgrades
             const eff = st === "failed" ? "error" : st;
             if (eff === "error" || target.status !== "error") target.status = eff;
           }
         };
 
-        const textOfContent = (c: unknown): string | undefined => {
-          const flat = (b: unknown): string => {
-            if (!b || typeof b !== "object") return "";
-            if (typeof (b as { text?: string }).text === "string")
-              return (b as { text?: string }).text ?? "";
-            // tool_call_update anida { type:"content", content:{ type:"text" } }
-            const inner = (b as { content?: unknown }).content;
-            if (inner && typeof inner === "object" && typeof (inner as { text?: string }).text === "string")
-              return (inner as { text?: string }).text ?? "";
-            return "";
-          };
-          if (Array.isArray(c)) {
-            const t = c.map(flat).join("");
-            return t || undefined;
-          }
-          return flat(c) || undefined;
-        };
-
         unsub = subscribeUpdates(session.id, (u: AcpUpdate) => {
-          if (isLoading(session.id)) return; // replay del session/load
+          if (isLoading(session.id)) return; // session/load replay
           firstUpdateSeen = true;
           const kind = u.sessionUpdate;
           if (kind === "agent_thought_chunk") {
-            const c = (u.content as { text?: string })?.text ?? "";
+            const c = textContentOf(u.content);
             if (c) {
-              // tramo de razonamiento como part intercalado (igual que el
-              // CLI: pensamiento, frase, herramienta, pensamiento…)
+              // reasoning segment interleaved as a part (like the CLI:
+              // thought, sentence, tool, thought…)
               const lastP = parts[parts.length - 1];
               if (lastP && lastP.kind === "reasoning") lastP.content += c;
               else parts.push({ kind: "reasoning", content: c });
               send({ type: "reasoning_delta", data: { content: c } });
             }
           } else if (kind === "agent_message_chunk") {
-            const c = (u.content as { text?: string })?.text ?? "";
+            const c = textContentOf(u.content);
             if (!c) return;
-            // "Info: <ruta>" del daemon tras create/edit: duplica el chip y
-            // llega como primer chunk de texto del turno → no se muestra
+            // daemon "Info: <file>" trailing tool calls duplicates the chip
+            // and arrives as the first text chunk of the turn → not shown
             if (
               !streamStarted &&
               DAEMON_INFO_RE.test(c) &&
@@ -253,12 +233,7 @@ export async function POST(req: Request) {
             else parts.push({ kind: "text", content: c });
             send({ type: "delta", data: { id: msgId, content: c } });
           } else if (kind === "tool_call") {
-            const rawIn = u.rawInput as { command?: string } | undefined;
-            const detail = rawIn?.command
-              ? `$ ${rawIn.command}`
-              : rawIn
-                ? JSON.stringify(rawIn).slice(0, 400)
-                : textOfContent(u.content);
+            const detail = toolInputDetail(u.rawInput, u.content);
             parts.push({
               kind: "tool",
               toolCallId:
@@ -283,8 +258,8 @@ export async function POST(req: Request) {
               typeof u.toolCallId === "string" ? u.toolCallId : undefined;
             if (st) updateToolPart(u.toolCallId, st);
             if (st === "failed" && tcIdU && deniable.has(tcIdU)) {
-              // falló por permiso denegado y la resolución sintética no llegó
-              // a titular el chip: se cierra la meta aquí
+              // failed because a permission was denied and the synthetic
+              // resolution did not get to title the chip: close it here
               deniable.delete(tcIdU);
               for (let i = parts.length - 1; i >= 0; i--) {
                 const p = parts[i];
@@ -296,13 +271,12 @@ export async function POST(req: Request) {
                   parts[i] = { ...p, title: `${p.title} (denied)` };
               }
             }
-            // 1.0.80 trae la salida del tool en vivo vía rawOutput.content
-            // (o la lista content[] con bloques anidados); nada que
-            // rellenar a posteriori
+            // 1.0.80 streams the tool output live via rawOutput.content (or a
+            // nested content[] list); nothing to fill in afterwards
             const rawOut = u.rawOutput as { content?: string; output?: string } | undefined;
             const detail = (() => {
-              const d0 = rawOut?.content ?? rawOut?.output ?? textOfContent(u.content);
-              return d0 ? cleanToolOut(d0) : d0;
+              const d0 = rawOut?.content ?? rawOut?.output ?? textContentOf(u.content);
+              return d0 ? cleanToolOutput(d0) : d0;
             })();
             if (detail) {
               let updated = false;
@@ -326,7 +300,7 @@ export async function POST(req: Request) {
                 }
               }
               if (!updated) {
-                // update sin tool_call previo: chip nuevo con la salida
+                // update with no preceding tool_call: new chip with the output
                 parts.push({
                   kind: "tool",
                   toolCallId:
@@ -347,19 +321,19 @@ export async function POST(req: Request) {
               },
             });
           } else if (kind === "available_commands_update") {
-            // snapshot oficial de comandos slash: lo reenviamos para que el
-            // composer refresque su paleta en vivo
+            // official slash-command snapshot: re-sent so the composer
+            // refreshes its palette live
             const cmds = (u.availableCommands ?? []) as AvailableCommand[];
             if (cmds.length)
               send({ type: "commands", data: { availableCommands: cmds } });
           } else if (kind === "permission_request") {
-            // visibilidad: el agente pide permiso; la web muestra una card y
-            // el turno queda en espera hasta que el usuario responda
+            // visibility: the agent asks for permission; the web shows a card
+            // and the turn stays paused until the user responds
             const reqId = typeof u.reqId === "number" ? u.reqId : null;
             const tcId = typeof u.toolCallId === "string" ? u.toolCallId : undefined;
             if (tcId) deniable.add(tcId);
-            // permiso asociado a un tool: meta del chip del tool (sin chip
-            // "permiso ·" duplicado, que desaparecería al rehidratar)
+            // permission tied to a tool: metadata of that chip (no duplicate
+            // "permission ·" chip, which would vanish on rehydration)
             if (!tcId)
               parts.push({
                 kind: "tool",
@@ -398,7 +372,7 @@ export async function POST(req: Request) {
                 break;
               }
             }
-            // marca el tool real pendiente que se quedó colgado
+            // flag the real tool chip that was left hanging
             if (denied && tcId) {
               for (let i = parts.length - 1; i >= 0; i--) {
                 const p = parts[i];
@@ -428,13 +402,13 @@ export async function POST(req: Request) {
             type: "error",
             data: {
               message:
-                "Sin respuesta en 20s: la sesión puede estar EN USO por otro driver (¿CLI/Copilot en terminal?). Libérala ahí o reintenta; el histórico converge igualmente.",
+                "No response in 20s: the session may be IN USE by another driver (CLI/terminal?). Release it there or retry; history converges anyway.",
             },
           });
           cancelSession(session.id).catch(() => {});
           sendDone();
           finish();
-        }, 20_000);
+        }, FIRST_UPDATE_TIMEOUT_MS);
 
         try {
           const out = await prompt(session.id, blocks, message.trim());
@@ -450,11 +424,11 @@ export async function POST(req: Request) {
           const result = out.result as
             | { stopReason?: string; usage?: PromptUsage }
             | undefined;
-          const content = textOf(parts);
+          const content = textOfParts(parts);
           if (!content.trim()) {
-            // sin texto: con chips de tool basta una línea de meta (no burbujas
-            // placeholder que se duplican con events.jsonl); si no hay ninguna
-            // herramienta, se mantiene la burbuja informativa mínima
+            // no text: with tool chips one meta line is enough (no placeholder
+            // bubbles that would duplicate on reload); without any tool, keep
+            // the minimal informative bubble
             const hasToolChips = parts.some((p) => p.kind === "tool");
             if (hasToolChips) {
               const deniedTool = parts.some(
@@ -468,7 +442,7 @@ export async function POST(req: Request) {
                 kind: "system",
                 content: deniedTool
                   ? "⚙ permission rejected — no response from the agent"
-                  : `⚙ sin respuesta del agente (stopReason: ${result?.stopReason ?? "unknown"})`,
+                  : `⚙ no response from the agent (stopReason: ${result?.stopReason ?? "unknown"})`,
               });
             } else {
               parts.push({
@@ -477,8 +451,8 @@ export async function POST(req: Request) {
               });
             }
           }
-          // stream ACP: la salida del tool ya llegó en vivo (rawOutput.content
-          // de tool_call_update); los chips quedan completos en el sessionLog
+          // ACP stream: tool output already arrived live (rawOutput.content of
+          // tool_call_update); chips are complete in the sessionLog
           const tools: ToolStep[] = [];
           for (const p of parts)
             if (p.kind === "tool" && !p.toolCallId?.startsWith("perm-"))
@@ -493,7 +467,7 @@ export async function POST(req: Request) {
             data: {
               id: msgId ?? crypto.randomUUID(),
               role: "assistant",
-              content: textOf(parts),
+              content: textOfParts(parts),
               parts: parts.length ? parts : undefined,
               tools: tools.length ? tools : undefined,
               usage: result?.usage,
@@ -508,8 +482,8 @@ export async function POST(req: Request) {
         } finally {
           unsub?.();
           unsub = null;
-          // fin de la interacción: sube la sesión en el orden (el contenido
-          // persiste en el CLI; aquí solo metadatos)
+          // end of interaction: the session rises to the top (its content
+          // persists in the CLI; only metadata lives here)
           touch(session.id);
           sendDone();
           finish();
@@ -517,11 +491,11 @@ export async function POST(req: Request) {
       })();
 
       req.signal.addEventListener("abort", () => {
-        // stream cerrado (stop vía POST /api/cancel, reload, navegación):
-        // NO enviamos session/cancel aquí — antes un reload cortaba el turno
-        // mid-permiso ("Session aborted") y parecía un colgado. El turno
-        // sigue en el daemon y su resultado queda en events.jsonl (converge
-        // al re-hidratar); el stop real lo hace /api/cancel explícitamente.
+        // stream closed (stop via POST /api/cancel, reload, navigation):
+        // we do NOT send session/cancel here — a reload used to cut the turn
+        // mid-permission ("Session aborted") and looked like a hang. The
+        // turn keeps running in the daemon and its result converges on
+        // rehydration; the explicit stop is POST /api/cancel.
         finish(true);
       });
     },

@@ -1,7 +1,7 @@
 "use client";
 
-/** Base del modal (About / Config): backdrop translúcido según tema (claro →
- * velo claro, oscuro → velo oscuro) sobre el chat. Cierre con Esc o backdrop. */
+/** Modal base (About / Config): theme-aware translucent backdrop (light →
+ * light veil, dark → dark veil) over the chat. Closes with Esc or backdrop. */
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useT } from "@/lib/i18n";

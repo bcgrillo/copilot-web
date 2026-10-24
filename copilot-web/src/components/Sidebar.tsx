@@ -17,7 +17,7 @@ type Props = {
   sessions: SessionSummary[];
   activeId: string | null;
   runningIds: Record<string, boolean>;
-  /** pendientes de ver por sesión (turno terminado/permiso): badge numérico */
+  /** unseen count per session (finished turn/permission): numeric badge */
   unread?: Record<string, number>;
   onSelect: (id: string) => void;
   onCreate: () => void;
@@ -46,7 +46,7 @@ export default function Sidebar({
   const [draft, setDraft] = useState("");
   const [menuId, setMenuId] = useState<string | null>(null);
 
-  // el servidor ya ordena por última actividad (updatedAt); nada que reordenar
+  // the server already sorts by last activity (updatedAt); no reordering
   const sorted = sessions;
 
   function startRename(s: SessionSummary) {
@@ -83,8 +83,8 @@ export default function Sidebar({
               <X className="h-4 w-4" />
             </button>
           )}
-          {/* nueva sesión en el header: solo desktop, con color del tema;
-              en móvil es el FAB */}
+          {/* new session in the header: desktop-only, themed; on mobile
+              it is the FAB */}
           <button
             onClick={onCreate}
             className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-emerald text-primary-foreground transition-opacity hover:opacity-90 md:flex"
@@ -185,8 +185,8 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* móvil: botón flotante "+" (nueva sesión) a la altura del pulgar,
-          con el color del acento del tema; sustituye al del header */}
+      {/* mobile: floating "+" button (new session) at thumb height,
+          with the theme accent color; replaces the header one */}
       {onClose && (
         <button
           onClick={onCreate}

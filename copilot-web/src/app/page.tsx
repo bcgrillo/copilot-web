@@ -34,18 +34,17 @@ function Shell() {
   const [runningIds, setRunningIds] = useState<Record<string, boolean>>({});
   const [liveTurns, setLiveTurns] = useState<Record<string, LiveTurn | null>>({});
   const [error, setError] = useState<string | null>(null);
-  // sube en cada sesión nueva: Chat usa el cambio para focar el composer
+  // rises on each new session: Chat uses the change to focus the composer
   const [focusNonce, setFocusNonce] = useState(0);
-  // pendientes de ver por sesión (turno terminado / permiso): badge del
-  // sidebar, contador del título, punto del favicon y notificación de
-  // sistema. Persiste en localStorage y se limpia al abrir la sesión con
-  // la pestaña visible.
+  // unseen count per session (finished turn / permission): sidebar badge,
+  // title counter, favicon dot and system notification. Persisted in
+  // localStorage; cleared when the session is opened with the tab visible.
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [loaded, setLoaded] = useState(false);
-  // hidratación de sesión en vuelo (spinner en vez de landing al abrir)
+  // session hydration in flight (spinner instead of landing on open)
   const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({});
-  // permiso "sticky": card de un permiso pendiente cuyo stream murió
-  // (reload/navegación). NUNCA se autoriza solo: se re-muestra hasta que
+  // "sticky" permission: card of a pending permission whose stream died
+  // (reload/navigation). NEVER self-authorized: re-shown until
   // el usuario responde.
   const [stickyPerms, setStickyPerms] = useState<
     Record<string, PermissionReq | null>
@@ -56,9 +55,9 @@ function Shell() {
     attachments?: Attachment[];
     attempts?: number;
   } | null>(null);
-  // sesiones con turno zombi que esta página está sondeando (1 por sesión)
+  // zombie-turn sessions this page is polling (one per session)
   const pollRef = useRef<Set<string>>(new Set());
-  // mensajes en cola (429 por permiso) a reenviar cuando su sesión quede idle
+  // queued messages (429 by permission) to re-send when the session is idle
   const retryAfterPollRef = useRef<
     Map<string, { sessionId: string; text: string; attachments?: Attachment[] }>
   >(new Map());
@@ -68,12 +67,12 @@ function Shell() {
     (text: string, attachments?: Attachment[], targetId?: string) => unknown
   >(() => {});
   // tema tri-estado: auto (sistema), light o dark; lo aplica el script
-  // themeInit del layout ANTES de hidratar; aquí se persiste el ciclo
+  // themeInit in the layout BEFORE hydration; the cycle is persisted here
   const [theme, setTheme] = useState<"auto" | "light" | "dark">("auto");
   const [menuOpen, setMenuOpen] = useState(false); // drawer de sesiones (mobile)
   const [aboutOpen, setAboutOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // comandos slash cacheados por sesión (paleta del composer)
+  // slash commands cached per session (composer palette)
   const [commands, setCommands] = useState<Record<string, AvailableCommand[]>>({});
   const abortRef = useRef<AbortController | null>(null);
 
@@ -81,7 +80,7 @@ function Shell() {
   const loadSessions = useCallback(async (): Promise<SessionSummary[]> => {
     const res = await fetch(apiUrl("/api/sessions"));
     const data = await res.json();
-    // el servidor devuelve la lista ordenada por última actividad
+    // the server returns the list sorted by last activity
     return data.sessions as SessionSummary[];
   }, []);
 
@@ -101,7 +100,7 @@ function Shell() {
     try {
       localStorage.setItem("theme", theme);
     } catch {}
-    // favicon y (por si UI cambió accent) acento se re-sincronizan
+    // favicon and (in case the UI changed the accent) accent re-sync
     syncThemeAndFavicon();
   }, [theme]);
 
@@ -114,8 +113,8 @@ function Shell() {
           data = [(await res.json()).session];
         }
         setSessions(data);
-        // abrir la última activa: prioridad ?s=<id> en la URL (deep-link),
-        // luego la que vimos por última vez, si no la más reciente
+        // open the last active one: URL ?s=<id> (deep-link) wins, then the
+        // last one we viewed, otherwise the most recent
         let last: string | null = null;
         try {
           last = localStorage.getItem("lastSession");
@@ -134,7 +133,7 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // la URL siempre refleja la sesión abierta (?s=<id>) para poder compartir
+  // the URL always reflects the open session (?s=<id>) for shareability
   useEffect(() => {
     if (!activeId) return;
     try {
@@ -165,13 +164,13 @@ function Shell() {
       if (Array.isArray(cmds) && cmds.length)
         setCommands((prev) => ({ ...prev, [id]: cmds }));
     } catch {
-      /* la sesión sin snapshot usará el último del cache del servidor */
+      /* the session without a snapshot will use the server cache last */
     }
   }, []);
 
   /**
    * Sondeo del turno zombi: el daemon sigue procesando aunque el stream
-   * SSE de esta pestaña haya muerto (reload, navegación). Refresca mensajes
+   * SSE of this tab has died (reload, navigation). Refreshes messages
    * y permiso sticky cada 1.5 s hasta que el server reporta idle.
    */
   const startPoll = useCallback(
@@ -211,7 +210,7 @@ function Shell() {
         pollRef.current.delete(id);
         setRunningIds((prev) => ({ ...prev, [id]: false }));
         refresh();
-        // ¿había un mensaje en cola esperando a que esta sesión quedara idle?
+        // is there a queued message waiting for this session to go idle?
         const retry = retryAfterPollRef.current.get(id);
         if (retry) {
           retryAfterPollRef.current.delete(id);
@@ -224,9 +223,9 @@ function Shell() {
   );
 
   /**
-   * Hidrata el contenido de una sesión bajo demanda: los metadatos están en
-   * la lista; los mensajes solo se traen de la API cuando la sesión se abre
-   * o termina de procesar (materialización por canal ACP en el server).
+   * Hydrates a session's content on demand: metadata is in the list;
+   * messages are fetched from the API only when the session is opened or
+   * finishes processing (ACP channel materialization on the server).
    */
   const hydrateDetail = useCallback(async (id: string) => {
     setLoadingIds((prev) => ({ ...prev, [id]: true }));
@@ -242,7 +241,8 @@ function Shell() {
       setSessions((prev) =>
         prev.map((s) => (s.id === id ? { ...s, ...session } : s))
       );
-      // permiso pendiente sin stream: re-mostrar card (sin auto-autorización)
+      // pending permission without stream: re-show the card (no
+      // auto-authorization)
       setStickyPerms((prev) => ({ ...prev, [id]: session.pending ?? null }));
       // turno vivo en el daemon sin stream local (reload): sondear hasta fin
       if (session.running) startPoll(id);
@@ -260,7 +260,7 @@ function Shell() {
     void hydrateDetail(activeId);
   }, [activeId, runningIds, hydrateDetail]);
 
-  // paleta slash: carga en CUALQUIER activación de sesión (entrada con
+  // slash palette: loads on ANY session activation (entry with
   // lastSession/deep-link incluida), no solo al hacer click en la sidebar
   useEffect(() => {
     if (activeId) void loadCommands(activeId);
@@ -295,7 +295,7 @@ function Shell() {
     sessionsRef.current = sessions;
   }, [sessions]);
 
-  /** marca "pendiente de ver" + notificación si la pestaña está oculta */
+  /** marks "unseen" + notification when the tab is hidden */
   const markUnread = useCallback(
     (id: string, kind: "done" | "perm") => {
       const viewing =
@@ -319,7 +319,7 @@ function Shell() {
           n.onclick = () => {
             window.focus();
             n.close();
-            // al volver por la notificación, aterriza en la sesión pendiente
+            // coming back from the notification, lands on the pending session
             if (activeIdRef.current !== id) selectSession(id);
           };
         }
@@ -348,7 +348,7 @@ function Shell() {
     hydratedRef.current = true;
   }, []);
 
-  // persistencia del contador no leído (los badges del sidebar lo leen)
+  // unread counter persistence (the sidebar badges read it)
   useEffect(() => {
     if (!hydratedRef.current) return;
     try {
@@ -356,7 +356,7 @@ function Shell() {
     } catch {}
   }, [unread]);
 
-  // fin de turno detectado en runningIds (true→false) de cualquier sesión
+  // turn end detected in runningIds (true→false) of any session
   const prevRunningRef = useRef<Record<string, boolean>>({});
   useEffect(() => {
     const prev = prevRunningRef.current;
@@ -379,7 +379,7 @@ function Shell() {
     prevPermRef.current = now;
   }, [stickyPerms, markUnread]);
 
-  // al volver a la pestaña se ve la sesión activa: limpia su pendiente
+  // back on the tab the active session is visible: clears its unseen count
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible" && activeIdRef.current)
@@ -389,7 +389,7 @@ function Shell() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [clearUnread]);
 
-  // título de pestaña: (pendientes) + nombre de la sesión activa
+  // tab title: (unseen) + active session name
   const unreadTotal = Object.values(unread).reduce((a, b) => a + b, 0);
   useEffect(() => {
     const name = activeSession?.name?.split("\n")[0]?.slice(0, 60);
@@ -411,8 +411,8 @@ function Shell() {
     const { session } = await res.json();
     setSessions((prev) => [session, ...prev]);
     setActiveId(session.id);
-    setFocusNonce((n) => n + 1); // foco directo al composer de la sesión nueva
-    // la sesión acaba de nacer en el daemon: ya tiene snapshot de comandos
+    setFocusNonce((n) => n + 1); // composer focused for the new session
+    // the session was just born in the daemon: it already has the command snapshot
     // (loadCommands corre en el efecto de activeId)
     try {
       localStorage.setItem("lastSession", session.id);
@@ -435,7 +435,7 @@ function Shell() {
     } catch {
       setError(t("err.renameNet"));
     }
-    // concilia con el servidor: reverte el optimismo si el CLI falló
+    // reconciles with the server: reverses the optimism if the CLI failed
     await refresh();
   }, [refresh]);
 
@@ -461,7 +461,7 @@ function Shell() {
       ok = false;
     }
     if (!ok) {
-      // la sesión sigue viva (el CLI no la borró): conciliar y volver a ella
+      // the session is still alive (the CLI did not delete it): reconcile and reopen it
       await refresh();
       setActiveId(id);
       return;
@@ -475,7 +475,7 @@ function Shell() {
       if (!sessionId || runningIds[sessionId]) return;
       setError(null);
       setMenuOpen(false);
-      clearUnread(sessionId); // enviar = estás mirando esta sesión
+      clearUnread(sessionId); // sending = you are looking at this session
 
       const now = new Date().toISOString();
       patchMessages(sessionId, (msgs) => [
@@ -503,8 +503,8 @@ function Shell() {
           const data = await res
             .json()
             .catch(() => ({} as { error?: string; busy?: boolean; pending?: PermissionReq }));
-          // 429 busy: la sesión tiene un turno anterior pendiente de un
-          // permiso. Sin auto-autorización: re-mostramos la card y dejamos
+          // 429 busy: the session has an earlier turn pending a permission.
+          // No auto-authorization: we re-show the card and leave
           // el texto listo para reintentarlo cuando el usuario responda.
           if (res.status === 429 && data.busy) {
             if (data.pending) {
@@ -523,7 +523,7 @@ function Shell() {
               };
               return;
             }
-            // busy sin permiso: el turno anterior está terminando. Reintento
+            // busy without permission: the earlier turn is finishing. Retry
             // silencioso (tope 3) para no bloquear al usuario.
             const attempts =
               (retryRef.current?.sessionId === sessionId
@@ -546,7 +546,7 @@ function Shell() {
           throw new Error(data.error || `Error ${res.status}`);
         }
 
-        // éxito real: el mensaje se entregó; anula cualquier reintento en cola
+        // real success: the message was delivered; cancels any queued retry
         retryRef.current = null;
         retryAfterPollRef.current.delete(sessionId);
 
@@ -686,12 +686,12 @@ function Shell() {
                 if (p.toolCallId === `perm-${d.reqId}`) {
                   turn.parts[i] = {
                     ...p,
-                    title: denied ? `${p.title} (denegado)` : p.title,
+                    title: denied ? `${p.title} (denied)` : p.title,
                     status: denied ? "error" : "completed",
                   };
                   break;
                 }
-                // el tool real al que aplicaba el permiso, si llegó el id
+                // the actual tool the permission applied to, when the id arrived
                 if (
                   d.toolCallId &&
                   p.toolCallId === d.toolCallId &&
@@ -699,13 +699,13 @@ function Shell() {
                 ) {
                   turn.parts[i] = {
                     ...p,
-                    title: denied ? `${p.title} (denegado)` : p.title,
+                    title: denied ? `${p.title} (denied)` : p.title,
                     status: denied ? "error" : "completed",
                   };
                   break;
                 }
                 if (p.status === "pending" && denied) {
-                  turn.parts[i] = { ...p, title: `${p.title} (denegado)`, status: "error" };
+                  turn.parts[i] = { ...p, title: `${p.title} (denied)`, status: "error" };
                   break;
                 }
               }
@@ -740,11 +740,11 @@ function Shell() {
     abortRef.current?.abort();
   }, []);
 
-  /** click en una opción concreta de la card de permiso (o atajo booleano).
-   * optionId: si viene, enviamos la elección exacta (allow_always...). */
+  /** click on a specific card option (or the boolean shortcut).
+   * optionId: when present, the exact choice is sent (allow_always…). */
   const respondPermission = useCallback(
     async (reqId: number, allow: boolean, optionId?: string) => {
-      // ¿la card era del turno LIVE (SSE local, el stream trae la resolución)
+      // was the card from the LIVE turn (local SSE, stream carries the resolution)
       // o STICKY (sin stream: reload)? Del sticky se encarga el sondeo.
       let stickySid: string | null = null;
       let isLive = false;
@@ -810,8 +810,8 @@ function Shell() {
         if (retry && retry.sessionId) {
           retryRef.current = null;
           // NO reenviamos a ciegas: el turno bloqueado cierra cuando el
-          // daemon termine; el sondeo del sticky dispara el reenvío al ver
-          // la sesión idle (retryAfterPoll, una cola por sesión).
+          // daemon finish; the sticky poll triggers the re-send when it
+          // sees the session idle (retryAfterPoll, one queue per session).
           retryAfterPollRef.current.set(retry.sessionId, retry);
         }
       } catch {}
@@ -839,7 +839,7 @@ function Shell() {
         onClose={menuOpen ? () => setMenuOpen(false) : undefined}
         footer={
           <div className="flex items-center justify-between gap-1.5">
-            {/* versión discreta (8): a la izquierda de los botones */}
+            {/* discreet version (8): to the left of the buttons */}
             <span className="pl-1 font-mono text-[10px] text-muted-foreground/70">
               v{pkg.version}
             </span>

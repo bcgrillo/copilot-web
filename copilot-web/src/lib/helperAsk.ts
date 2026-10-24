@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-/** Preguntas del MCP helper (tool ask_user) en RAM. Nada en disco —
- * Principio 0. El helper (copilot-web/mcp/ask-user.mjs) POSTea aquí y la UI
- * muestra la card en la(s) sesión(es) con turno en curso; la respuesta (texto
- * del usuario) se devuelve por polling. */
+/** ask_user questions from the MCP helper, in RAM. Nothing on disk —
+ * Principle 0. The helper (copilot-web/mcp/ask-user.mjs) POSTs here and the
+ * UI shows the card on the session(s) with a turn in progress; the answer
+ * (user text) is returned via polling. */
 export type PendingAsk = {
   id: string;
   question: string;
@@ -23,8 +23,8 @@ export function newAsk(question: string, kind: "info" | "choice", options: strin
   return { id: a.id, question, kind, options, createdAt: a.createdAt };
 }
 
-/** respuestas pendientes (para la card de la UI); las de más de 5 min
- * desaparecen — el helper ya habría recibido timeout */
+/** pending answers (for the UI card); those older than 5 min disappear —
+ * the helper would already have timed out */
 export function pendingAsks(): PendingAsk[] {
   const now = Date.now();
   return [...asks.values()]
@@ -41,7 +41,7 @@ export function answerAsk(id: string, answer: string): boolean {
   return true;
 }
 
-/** resolved, pending, o null si el id no existe */
+/** resolved, pending, or null when the id does not exist */
 export function getAsk(id: string): { pending: boolean; answer?: string } | null {
   const a = asks.get(id);
   if (!a) return null;

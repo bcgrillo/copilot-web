@@ -1,7 +1,8 @@
-/** Estado y reinicio del daemon ACP (Copilot CLI) — beta.
- * GET: ¿vive? pid/puerto/modelo leyendo /proc.
- * POST {action:"restart"}: mata el proceso y lo repite con argv/env EXACTOS del
- * /proc viejo (incluye helper MCP y flags del launcher) y espera a que responda. */
+/** ACP daemon (Copilot CLI) status and restart — beta.
+ * GET: alive? pid/port/model read from /proc.
+ * POST {action:"restart"}: kills the process and respawns it with the OLD
+ * /proc argv/env EXACTLY (includes the MCP helper and launcher flags) and
+ * waits for it to respond. */
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,9 +30,9 @@ function probe(port: number, timeout = 700): Promise<boolean> {
 
 type DaemonInfo = { pid: number; model: string; args: string[]; env: string };
 
-/** busca en /proc procesos con "copilot" + --acp + este puerto; devuelve el
- * MÁS EXTERNO (el launcher de node que engendra el binario real) con su
- * cmdline y environ ya saneados por el propio launcher. */
+/** scans /proc for processes with "copilot" + --acp + this port; returns the
+ * OUTERMOST one (the node launcher that spawns the real binary) with its
+ * cmdline and environ already sanitized by the launcher itself. */
 function findDaemon(): { pid: number; model: string; args: string[]; env: string } | null {
   try {
     const cands: { pid: number; exeIsNode: boolean; model: string; args: string[]; env: string }[] = [];
@@ -51,7 +52,7 @@ function findDaemon(): { pid: number; model: string; args: string[]; env: string
       if (!looksCopilot) continue;
       const joined = parts.join(" ");
       if (!joined.includes("--acp") || !joined.includes(`--port ${ACP_PORT}`)) continue;
-      // wrapper node <script> → args después del script; el binario real arranca directo
+      // node <script> wrapper → args come after the script; the real binary starts directly
       const start = exe === "node" ? 2 : 1;
       const args = parts.slice(start);
       let env = "";
@@ -61,7 +62,7 @@ function findDaemon(): { pid: number; model: string; args: string[]; env: string
       if (m) model = m[1];
       cands.push({ pid: Number(f), exeIsNode: exe === "node", model, args, env });
     }
-    // el más externo (wrapper del launcher) es nuestro candidato: engendra al real
+    // the outermost (launcher wrapper) is our candidate: it spawns the real one
     const wrapper = cands.find((c) => c.exeIsNode);
     const best = wrapper ?? cands[0];
     if (!best) return null;
@@ -80,8 +81,8 @@ async function waitProbe(target: boolean, ms: number): Promise<boolean> {
   return false;
 }
 
-/** misma whitelist del launcher (bin/copilot-web.mjs): el CLI es sensible a
- * basura del entorno (COPILOT_LOADER_PID etc. rompen session/new). */
+/** same allowlist as the launcher (bin/copilot-web.mjs): the CLI is
+ * sensitive to environment noise (COPILOT_LOADER_PID etc. break session/new). */
 const DAEMON_ENV = [
   "PATH", "HOME", "SHELL", "LANG", "LC_ALL", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
   "HOSTNAME", "TMPDIR",
@@ -89,13 +90,13 @@ const DAEMON_ENV = [
   "COPILOT_MODEL",
 ];
 
-/** rebuild del helper MCP como el launcher (ruta ask-user + web actual) */
+/** rebuilds the MCP helper the same way the launcher does (ask-user path + current web) */
 function ensureHelperFile(): string | null {
   try {
     const webPort = Number(process.env.PORT || 3100);
     const helperFile = `/tmp/copilot-web-helper-${ACP_PORT}.json`;
     const mcpScript = `${process.cwd()}/mcp/ask-user.mjs`;
-    readFileSync(mcpScript); // sin script no hay helper
+    readFileSync(mcpScript); // without the script there is no helper
     writeFileSync(
       helperFile,
       JSON.stringify({
@@ -146,8 +147,8 @@ export async function POST(req: Request) {
   if (!(await waitProbe(true, 1000))) {
     return Response.json({ ok: false, error: "daemon not responding" }, { status: 409 });
   }
-  // pueden ser 2 (wrapper node + binario real) → matar todos los del puerto,
-  // incluidos helpers MCP ask-user huérfanos de rondas previas
+  // there can be 2 (node wrapper + real binary) → kill everything on the
+  // port, including orphan MCP ask-user helpers from previous rounds
   const victims: number[] = [];
   const mcpScript = `${process.cwd()}/mcp/ask-user.mjs`;
   try {
@@ -166,7 +167,7 @@ export async function POST(req: Request) {
   for (const pid of victims) {
     try { process.kill(pid, "SIGTERM"); } catch {}
   }
-  // el binario real apaga el listener: si sigue vivo, SIGKILL
+  // the real binary shuts the listener down: if still alive, SIGKILL
   await waitProbe(false, 2000);
   if (await probe(ACP_PORT)) {
     for (const pid of victims) {
@@ -174,8 +175,8 @@ export async function POST(req: Request) {
     }
     await waitProbe(false, 3000);
   }
-  // respawn fiel a la intención del launcher: argv del /proc viejo + model y
-  // helper MCP si faltan; env saneado con la misma whitelist del launcher
+  // respawn faithful to the launcher's intention: old /proc argv + model
+  // and MCP helper if missing; env sanitized with the same launcher allowlist
   const args = [...old.args];
   if (old.model && !args.includes("--model")) args.push("--model", old.model);
   const helperFile = ensureHelperFile();

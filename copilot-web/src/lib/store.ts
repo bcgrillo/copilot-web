@@ -1,10 +1,11 @@
 /**
- * Overlay en RAM para sesiones 0-turn creadas por la web: session/list del
- * CLI no las publica (sin turnos), así que vivimos aquí hasta su primer
- * prompt (después las lista el CLI y el overlay deja de aportar). Sin
- * ficheros: si el server muere antes del primer turno la sesión queda solo
- * en el CLI (no visible en la web) — aceptado. TODO el contenido va por
- * canal ACP (ver lib/materialize.ts); aquí SOLO metadatos mínimos.
+ * RAM overlay for zero-turn sessions created by the web: the CLI's
+ * session/list does not publish them (no turns), so they live here until
+ * their first prompt (afterwards the CLI lists them and the overlay stops
+ * contributing). No files: if the server dies before the first turn the
+ * session only exists in the CLI (not visible in the web) — accepted.
+ * ALL content flows through the ACP channel (see lib/materialize.ts);
+ * here ONLY minimal metadata.
  */
 import crypto from "crypto";
 import type { SessionSummary } from "./types";
@@ -14,7 +15,7 @@ const g = globalThis as unknown as {
 };
 const zeroTurn = (g.__webZeroTurn ??= new Map<string, SessionSummary>());
 
-/** Overlay 0-turn: {id, name, createdAt} de lo aún no publicado por el CLI. */
+/** Zero-turn overlay: {id, name, createdAt} of what the CLI does not publish yet. */
 export function listZeroTurn(): SessionSummary[] {
   return [...zeroTurn.values()];
 }
@@ -25,7 +26,7 @@ export const sortByActivity = (list: SessionSummary[]) =>
       (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt)
   );
 
-/** Crea el overlay 0-turn de una sesión nueva (el id ya viene de session/new). */
+/** Creates the zero-turn overlay for a new session (the id comes from session/new). */
 export function create(
   name: string | undefined,
   id: string,
@@ -33,7 +34,7 @@ export function create(
 ): SessionSummary {
   const meta: SessionSummary = {
     id,
-    name: name?.trim() || `Sesión ${zeroTurn.size + 1}`,
+    name: name?.trim() || `Session ${zeroTurn.size + 1}`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     cwd,
@@ -42,19 +43,19 @@ export function create(
   return meta;
 }
 
-/** Solo overlay (0-turn). Sesiones con turnos viven en el CLI: findSession. */
+/** Overlay only (zero-turn). Sessions with turns live in the CLI: findSession. */
 export function get(id: string): SessionSummary | undefined {
   return zeroTurn.get(id);
 }
 
-/** Renombra SOLO overlay 0-turn (con turnos el título manda el CLI). */
+/** Renames ONLY zero-turn overlay (with turns the CLI owns the title). */
 export function rename(id: string, name: string): SessionSummary | undefined {
   const s = get(id);
   if (s && name.trim()) s.name = name.trim();
   return s;
 }
 
-/** Marca actividad del overlay (con turnos el CLI ya trae su updatedAt). */
+/** Stamps overlay activity (with turns the CLI already brings its updatedAt). */
 export function touch(id: string) {
   const s = get(id);
   if (s) s.updatedAt = new Date().toISOString();

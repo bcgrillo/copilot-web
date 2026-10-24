@@ -2,9 +2,9 @@
 /**
  * copilot-web launcher
  *
- * Arranca, en un solo comando, el daemon ACP de Copilot CLI y el servidor
- * web Next. La web no es un servicio aparte: si el daemon ya está arriba,
- * lo reutiliza; si no, lo lanza.
+ * Starts, in a single command, the Copilot CLI ACP daemon and the Next
+ * web server. The web is not a standalone service: if the daemon is
+ * already up it reuses it; otherwise it spawns it.
  */
 import { spawn, execSync } from "node:child_process";
 import net from "node:net";
@@ -62,7 +62,7 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-/** ¿Hay algo escuchando en port? */
+/** Is anything listening on port? */
 function probe(port) {
   return new Promise((ok) => {
     const s = net.connect(port, "127.0.0.1");
@@ -116,20 +116,20 @@ function readDaemonModel(acpPort) {
         const m = env.find((kv) => kv.startsWith("COPILOT_MODEL="));
         return m ? m.slice("COPILOT_MODEL=".length) : "";
       } catch {
-        /* pid efímero o sin permiso: sigue */
+        /* ephemeral pid or no permission: continue */
       }
     }
   } catch {
-    /* sin /proc (no Linux) */
+    /* no /proc (not Linux) */
   }
   return "";
 }
 
 if (await probe(opts.acpPort)) {
   console.log(`[copilot-web] reusing ACP daemon on :${opts.acpPort}`);
-  // el daemon vivo conserva su env de arranque: recuperamos el modelo que se
-  // le pasó entonces (el flag --model de ESTA ejecución no aplica a un daemon
-  // ya en marcha, pero el status-bar debe seguir mostrando el modelo real)
+  // the live daemon keeps its boot env: we recover the model passed back
+  // then (the --model flag of THIS run does not apply to an already
+  // running daemon, but the status-bar must keep showing the real model)
   const liveModel = readDaemonModel(opts.acpPort);
   if (opts.model && opts.model !== liveModel)
     console.warn(
@@ -142,8 +142,8 @@ if (await probe(opts.acpPort)) {
   opts.model = liveModel;
 } else if (opts.daemon) {
   if (!opts.copilotArgs) {
-    // SIN allow-all por defecto: el CLI pregunta permisos por ACP y la web
-    // los resuelve con allow/deny (cards). Para permitir todo explícitamente:
+    // NO allow-all by default: the CLI asks permissions over ACP and the
+    // web resolves them with allow/deny cards. To allow everything explicitly:
     // --copilot-args "--allow-all-tools --allow-all-paths --allow-all-urls"
     opts.copilotArgs = "";
   }
@@ -158,10 +158,10 @@ if (await probe(opts.acpPort)) {
     ...(opts.model ? ["--model", opts.model] : []),
   ];
   console.log(`[copilot-web] daemon: copilot ${args.join(" ")}`);
-  /* env SANITIZADO (whitelist): el CLI es sensible a basura del entorno del
-   * operador (p.ej. COPILOT_LOADER_PID/COPILOT_AGENT_SESSION_ID del entorno
-   * CodePods bloquean session/new con "Authentication required"); se pasa lo
-   * mínimo + provider/model del propio entorno. */
+  /* SANITIZED env (allowlist): the CLI is sensitive to operator
+   * environment noise (e.g. COPILOT_LOADER_PID/COPILOT_AGENT_SESSION_ID
+   * from the CodePods environment block session/new with "Authentication
+   * required"); the minimum is passed plus the own provider/model. */
   const DAEMON_ENV = [
     "PATH","HOME","SHELL","LANG","LC_ALL","TERM","TERM_PROGRAM","TERM_PROGRAM_VERSION",
     "HOSTNAME","TMPDIR",
@@ -174,8 +174,8 @@ if (await probe(opts.acpPort)) {
   for (const k of Object.keys(denvSrc)) {
     if (k.startsWith("COPILOT_PROVIDER_") || k.startsWith("COPILOT_GENERATOR")) denv[k] = denvSrc[k];
   }
-  // MCP helper (ask_user): config file + --additional-mcp-config, sólo en
-  // daemon recién spawneado (reutilizar + helper = warn honesto).
+  // MCP helper (ask_user): config file + --additional-mcp-config, only on
+  // a freshly spawned daemon (reuse + helper = honest warn).
   if (opts.helper) {
     opts.helperFile = `/tmp/copilot-web-helper-${opts.acpPort}.json`;
     writeFileSync(
@@ -192,8 +192,8 @@ if (await probe(opts.acpPort)) {
       })
     );
     args.push("--additional-mcp-config", `@${opts.helperFile}`);
-    // ask_user del helper no pregunta permiso: whitelist de la tool del
-    // MCP server "copilot-web-helper" (CLI --allow-tool patrón server(tool))
+    // the helper ask_user does not ask permission: allowlist the tool of
+    // the "copilot-web-helper" MCP server (CLI --allow-tool server(tool) pattern)
     args.push("--allow-tool", "copilot-web-helper(ask_user)");
     console.log(`[copilot-web] helper: MCP config at ${opts.helperFile}`);
   }

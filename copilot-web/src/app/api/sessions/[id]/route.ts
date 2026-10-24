@@ -26,9 +26,9 @@ export async function GET(_req: Request, { params }: Params) {
   const session = (await reconcile()).find((s) => s.id === id);
   if (!session)
     return Response.json({ error: "Session not found" }, { status: 404 });
-  // el histórico se materializa por canal ACP (session/load cuando no hay
-  // log en RAM + updates en vivo ya capturados en sessionLog); nunca se lee
-  // ningún fichero interno del CLI
+  // history is materialized over the ACP channel (session/load when there
+  // is no RAM log + live updates already captured in sessionLog); CLI
+  // internal files are never read
   let messages: ChatMessage[] = [];
   let note: string | undefined;
   try {
@@ -37,9 +37,9 @@ export async function GET(_req: Request, { params }: Params) {
   } catch (e) {
     note = `Failed to materialize history: ${errMsg(e)}`;
   }
-  // permiso pendiente (si el stream murió con una card sin responder: se
-  // re-muestra en la web; nunca se autoriza solo) + turno vivo en el daemon
-  // (zombi: el cliente lo sondea hasta que termina)
+  // pending permission (if the stream died with an unanswered card: it is
+  // re-shown in the web; never self-authorized) + live turn in the daemon
+  // (zombie: the client polls until it finishes)
   const pending = pendingPermissionFor(id);
   return Response.json({
     session: {
@@ -56,17 +56,17 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const raw = String(body?.name ?? "").trim();
-  if (!raw) return Response.json({ error: "Falta name" }, { status: 400 });
+  if (!raw) return Response.json({ error: "Missing name" }, { status: 400 });
   const session: SessionSummary | undefined = await findSession(id);
   if (!session)
     return Response.json({ error: "Session not found" }, { status: 404 });
   if (runningTurns.has(id))
     return Response.json(
-      { error: "La sesión está procesando un mensaje; espera a que termine." },
+      { error: "The session is processing a message; wait for it to finish." },
       { status: 429 }
     );
 
-  // ¿sesión con turnos en el CLI? (solo esas aparecen en session/list)
+  // session with turns in the CLI? (only those appear in session/list)
   let previous: string | null = null;
   try {
     previous =
@@ -76,16 +76,16 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (previous === null) {
-    // 0-turn: el CLI no lista la sesión → renombre en el overlay RAM
-    // (al primer turno session/list manda)
+    // zero-turn: the CLI does not list the session → rename in the RAM
+    // overlay (on the first turn, session/list wins)
     const s = rename(id, raw);
     return Response.json({ session: s });
   }
 
-  // `/session rename` renombra SOLO la sesión actual del driver del CLI: se
-  // inyecta como prompt slash en la propia sesión objetivo (los slash no
-  // crean turnos). Luego se verifica contra session/list y solo si el CLI
-  // confirma se escribe localmente; si no, error visible en la web.
+  // `/session rename` renames ONLY the current session of the CLI driver:
+  // it is injected as a slash prompt on the target session itself (slashes
+  // do not create turns). Then it is verified against session/list and only
+  // written locally if the CLI confirms; otherwise a visible web error.
   try {
     const r = await prompt(id, [{ type: "text", text: `/session rename ${raw}` }]);
     if (r.error) throw new Error(r.error.message || JSON.stringify(r.error));
@@ -102,14 +102,14 @@ export async function PATCH(req: Request, { params }: Params) {
       (await listAgentSessions()).find((x) => x.sessionId === id)?.title ?? "";
     if (title && title !== previous) finalName = title.trim().slice(0, 80) || raw;
     else if (title && title === raw) finalName = raw;
-    else throw new Error("session/list no refleja el renombrado");
+    else throw new Error("session/list does not reflect the rename");
   } catch (e) {
     return Response.json(
       { error: `CLI did not confirm rename: ${errMsg(e)}` },
       { status: 502 }
     );
   }
-  // el CLI ya confirmó el nuevo título → es la verdad, sin caché local
+  // the CLI already confirmed the new title → it is the truth, no local cache
   return Response.json({
     session: { ...session, name: finalName },
   });
@@ -122,11 +122,11 @@ export async function DELETE(_req: Request, { params }: Params) {
     return Response.json({ error: "Session not found" }, { status: 404 });
   if (runningTurns.has(id))
     return Response.json(
-      { error: "No puedes borrar una sesión con un turno en curso." },
+      { error: "You cannot delete a session with a turn in progress." },
       { status: 429 }
     );
 
-  // ¿existe como sesión del CLI (con turnos)?
+  // does it exist as a CLI session (with turns)?
   let inCli = false;
   try {
     inCli = (await listAgentSessions()).some((r) => r.sessionId === id);
@@ -135,19 +135,19 @@ export async function DELETE(_req: Request, { params }: Params) {
   }
 
   if (inCli) {
-    // borrar requiere cerrar primero el driver en vuelo de NUESTRA conexión
-    // (verificado: con el driver abierto, un prompt a la sesión borrada
-    // seguiría vivo)
+    // deletion requires closing first the driver in flight of OUR
+    // connection (verified: with the driver open, a prompt to the deleted
+    // session would stay alive)
     await closeAgentSession(id).catch(() => {});
     const r = await adminPrompt(`/session delete ${id} --yes`).catch((e) => ({
       error: { message: errMsg(e) },
     }));
     if (r.error)
       return Response.json(
-        { error: `El CLI no pudo ejecutar el borrado: ${r.error.message}` },
+        { error: `The CLI could not delete: ${r.error.message}` },
         { status: 502 }
       );
-    // verificación oficial: debe desaparecer del session/list del CLI
+    // official verification: it must disappear from the CLI session/list
     let stillThere: boolean;
     try {
       stillThere = (await listAgentSessions()).some((x) => x.sessionId === id);
@@ -158,10 +158,10 @@ export async function DELETE(_req: Request, { params }: Params) {
       );
     }
     if (stillThere) {
-      // SIN tombstones: el CLI manda. La sesión sigue existiendo ahí y la
-      // conciliación la mantiene; el fallo se informa al usuario.
+      // NO tombstones: the CLI wins. The session keeps existing there and
+      // reconciliation keeps it; the failure is reported to the user.
       return Response.json(
-        { error: "El CLI no pudo borrar la sesión (sigue en session/list)." },
+        { error: "The CLI could not delete the session (still in session/list)." },
         { status: 502 }
       );
     }

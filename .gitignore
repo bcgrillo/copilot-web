@@ -1,0 +1,3 @@
+# Publishing to the public repo is an LOCAL-ONLY operation (temporary remote,
+# only main/dev). The helper script stays out of history on purpose.
+/publicar.sh

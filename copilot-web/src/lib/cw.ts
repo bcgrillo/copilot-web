@@ -1,5 +1,5 @@
-/** Re-aplica tema (clase dark) + favicon tras cambios de UI en Config.
- * themeInit (layout.tsx) define window.__cwApplyTheme en el arranque. */
+/** Re-applies theme (dark class) + favicon after Config UI changes.
+ * themeInit (layout.tsx) defines window.__cwApplyTheme at boot. */
 export function syncThemeAndFavicon(): void {
   (window as unknown as { __cwApplyTheme?: () => void }).__cwApplyTheme?.();
 }
