@@ -116,4 +116,6 @@
   0.0.25.4 pasa a ser v0.0.26). Cuando el usuario diga que la beta se libera
   "oficialmente", la versión pasa a v0.1.x y sigue en 3 dígitos.
 - El roadmap público vive en los READMEs (EN y ES); ninguno de esos to-dos
-  bloquea el lanzamiento de la beta.
+  bloquea el lanzamiento de la beta. APLICADO 24/10/2026: la beta oficial
+  arranca en `v0.1.0` (tag en dev, release generada por release.yml en el
+  repo público bcgrillo/copilot-web).
