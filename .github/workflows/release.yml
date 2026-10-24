@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: copilot-web/package-lock.json
+
+      - name: Build web app
+        working-directory: copilot-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Package release tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          tar -czf "dist/copilot-web-${VERSION}.tar.gz" \
+            --exclude .git \
+            --exclude "copilot-web/node_modules" \
+            --exclude "copilot-web/.next" \
+            --exclude "copilot-web/.env.local" \
+            copilot-web scripts/install.sh README.md
+
+      - name: Smoke-test launcher on CI
+        working-directory: copilot-web
+        run: |
+          # sin copilot CLI en CI y sin daemon: el launcher debe fallar rápido
+          node bin/copilot-web.mjs --no-daemon --port 3111 >/dev/null 2>&1 \
+            && { echo "ERROR: expected fail-fast, got success"; exit 1; } \
+            || echo "launcher fail-fast OK"
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/copilot-web-${GITHUB_REF_NAME}.tar.gz \
+            scripts/install.sh
