@@ -1,5 +1,15 @@
 # task.md — Ciclo v0.1.0 cerrado; follow-ups arrancando (v0.1.1)
 
+## v0.1.2 (25/10) — versión visible de la UI
+- El user detecta "v0.0.32" en sidebar/About: leen copilot-web/package.json,
+  nunca bumpado (pre-pública era 0.0.32; v0.1.1 publicó tarballs con esa
+  versión). Fix: npm version 0.1.2 + lock; 60/60 tests; rebuild + serve
+  local OK (bundle con 0.1.2). Nota sandbox: 14 helpers ask-user zombie
+  (MCP sin cerrar) dejaban spawn EAGAIN en vitest — kill selectivo
+  (NO daemon :3222 ni copilot :continue).
+- Publicado: tag v0.1.2 + release (con el user). Checklist release
+  (bump package.json antes de taguear) → decisions.md.
+
 ## v0.1.1 (24/10 23:40+) — arranque sin clonar + CI — CÓDIGO LISTO
 Pide del user: arreglar Quick Start (`git clone <github repo>` sin URL real y
 el `npx copilot-web` que nunca existió) + activar el badge de build/test.

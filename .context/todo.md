@@ -15,6 +15,8 @@
 - [x] release v0.1.1: squash dev→main (b85d12d) + tag + publicar — release
   success en repo público (tarball + install.sh standalone); CI verde
   (main+dev). Bug de publicar.sh corregido (--tags → refs explícitas).
+- [x] release v0.1.2: fix versión visible en UI (package.json 0.0.32→0.1.2;
+  el tag v0.1.1 publicó tarballs con la versión vieja).
 - [ ] limpieza ramas lualab-xyz: quedan origin/checkpoint-24-10-2026 y
   origin/feature/mcp-helper (candidatas a borrar).
 

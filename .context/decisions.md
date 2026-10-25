@@ -119,3 +119,7 @@
   bloquea el lanzamiento de la beta. APLICADO 24/10/2026: la beta oficial
   arranca en `v0.1.0` (tag en dev, release generada por release.yml en el
   repo público bcgrillo/copilot-web).
+- Checklist al cortar release (v0.X.Y): ANTES de taguear, `npm version
+  X.Y.Z --no-git-tag-version` en copilot-web/ + sync package-lock (el
+  sidebar y About muestran pkg.version; en v0.1.1 se coló 0.0.32 en los
+  tarballs publicados → corregido/cubierto en v0.1.2).
