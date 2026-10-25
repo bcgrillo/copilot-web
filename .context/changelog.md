@@ -1,3 +1,11 @@
+## v0.1.2 (25/10/2026) — release publicada (repo público)
+- fix: la UI muestra la versión real (sidebar/About leen
+  copilot-web/package.json, que había quedado en 0.0.32 desde la era
+  pre-pública). package.json 0.0.32 → 0.1.2; verificado en la build local
+  (60/60 tests, bundle con 0.1.2, servidor :3100 recién reconstruido).
+- Checklist de release documentado en decisions.md (bump de package.json
+  antes de taguear).
+
 ## v0.1.1 (24/10/2026) — release publicada (repo público)
 - READMEs: Quick Start con ruta SIN CLONAR (instalador autocontenido desde
   releases/latest: descarga él mismo el tarball) y git clone con la URL real
