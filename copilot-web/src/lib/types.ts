@@ -11,7 +11,7 @@ export type ToolStep = {
 /** Ordered timeline of a turn: interleaved text spans and tool calls */
 export type MessagePart =
   | { kind: "text"; content: string; reasoning?: string }
-  | { kind: "reasoning"; content: string }
+  | { kind: "reasoning"; content: string; done?: boolean }
   | { kind: "tool"; toolCallId?: string; title: string; status: string; detail?: string }
   | { kind: "system"; content: string };
 

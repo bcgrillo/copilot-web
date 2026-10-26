@@ -1,4 +1,50 @@
-# task.md — Ciclo v0.1.0 cerrado; follow-ups arrancando (v0.1.1)
+# task.md — Ciclo v0.1.3 (lote UI fixes) + patch rename/delete
+
+## Estado actual (validation + commit patch integrado)
+- Tests: 65/65 verde (`vitest run --pool=forks --no-file-parallelism` — los
+  workers por defecto agotan threads del cgroup pids.max=256; usar esa forma
+  mientras el entorno esté tenso). tsc --noEmit OK.
+- Commit `2b78c1a` en feature/v0.1.3-ui-fixes: patch host-side rename/delete
+  integrado (acp.ts + route.ts + task/todo). Pushed (checkpoint).
+
+## session-rename-delete-patch — workaround rename/delete para CLI 1.0.89+ (integrado)
+- (Trabajo host-side del user, rama feature/session-rename-delete-patch,
+  integrado en esta feature: acp.ts + api/sessions/[id]/route.ts.)
+- Diagnóstico: desde 1.0.89 (verificado 1.0.103) los slashes `/rename`/
+  `/session rename` responden "Session renamed to: X" SIN efecto (no-op bajo
+  ACP) y `/session delete` responde "handled by the CLI host"; no existe
+  método ACP oficial (initialize solo declara sessionCapabilities: close+list).
+- Workaround (provisional, conmutable): el host gestiona directamente el
+  store persistido del CLI — rename edita ~/.copilot/session-state/<id>/
+  workspace.yaml (name + user_named=true, mismo write que hace la TUI) y
+  delete cierra el driver y borra el dir session-state.
+  SESSION_OPS_MODE=slash restaura la vía original por prompt cuando GitHub
+  lo repare (issue pendiente).
+- E2E verificado contra 1.0.103 vía API web: rename sobrevive a nuevos
+  turnos (user_named), delete desaparece de session/list, sesiones ajenas
+  intactas.
+
+## v0.1.4 (25/10 19:10+) — fix puntito daemon (config)
+- El puntito "ACP daemon running" en SettingsModal usaba `bg-emerald`, que
+  cambia con el acento (data-accent: green/lime/teal/cyan/sky). Fijo:
+  `bg-green-500` (verde literal, independiente del acento y del tema).
+  tsc OK. Los demás bg-emerald (turno en curso sidebar/chat) se mantienen.
+
+## v0.1.3 (25/10 18:35+) — lote UI fixes — CÓDIGO LISTO
+Cinco fixes pedidos por el user:
+1. Móvil: altura del logo no se salta entre sidebar (py-4) y header de sesión
+   (ahora py-4 también; título leading-tight + id a 10px para comprimir).
+2. Razonamiento en vivo: se cierra UNO A UNO cuando un segmento termina —
+   servidor sella el último reasoning al empezar texto/tool (evento
+   reasoning_done con index) + sellado local en delta como respaldo; la UI
+   renderiza reasoning done colapsado (open={!p.done}).
+3. Mockup del README actualizado (assets/mockup.png, ya en git staged).
+4. URLs de mensajes del usuario autolinkeadas (linkify, nueva pestaña).
+5. Bloques de código: botón copiar sutil al hover (esquina superior derecha).
+Tests: 65/65 (nuevo live.test.ts con sealLastOpenReasoning). tsc OK, build
+OK, servidor :3100 relanzado y 200. Daemon :3222 intacto.
+Pendiente: squash dev→main + bump package.json + tag v0.1.3 + publicar
+(con el user).
 
 ## v0.1.2 (25/10) — versión visible de la UI
 - El user detecta "v0.0.32" en sidebar/About: leen copilot-web/package.json,

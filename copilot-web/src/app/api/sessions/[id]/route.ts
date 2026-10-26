@@ -7,9 +7,12 @@ import {
   materializeSession,
   pendingPermissionFor,
   prompt,
+  renameCliSession,
+  removeCliSessionDir,
   resetSessionLog,
   adminPrompt,
   runningTurns,
+  SESSION_OPS_MODE,
 } from "@/lib/acp";
 import { materialize } from "@/lib/materialize";
 import type { ChatMessage, SessionSummary } from "@/lib/types";
@@ -79,35 +82,71 @@ export async function PATCH(req: Request, { params }: Params) {
     // zero-turn: the CLI does not list the session → rename in the RAM
     // overlay (on the first turn, session/list wins)
     const s = rename(id, raw);
+    if (SESSION_OPS_MODE === "host") {
+      // host workaround only: also persist to the CLI yaml (created on
+      // session/new) so the name survives the first turn (user_named=true
+      // freezes it); with the slash path the first turn titles it as usual
+      await renameCliSession(id, raw).catch(() => {});
+    }
     return Response.json({ session: s });
   }
 
-  // `/session rename` renames ONLY the current session of the CLI driver:
-  // it is injected as a slash prompt on the target session itself (slashes
-  // do not create turns). Then it is verified against session/list and only
-  // written locally if the CLI confirms; otherwise a visible web error.
-  try {
-    const r = await prompt(id, [{ type: "text", text: `/session rename ${raw}` }]);
-    if (r.error) throw new Error(r.error.message || JSON.stringify(r.error));
-  } catch (e) {
-    return Response.json(
-      { error: `CLI could not rename: ${errMsg(e)}` },
-      { status: 502 }
-    );
-  }
-
   let finalName: string;
-  try {
-    const title =
-      (await listAgentSessions()).find((x) => x.sessionId === id)?.title ?? "";
-    if (title && title !== previous) finalName = title.trim().slice(0, 80) || raw;
-    else if (title && title === raw) finalName = raw;
-    else throw new Error("session/list does not reflect the rename");
-  } catch (e) {
-    return Response.json(
-      { error: `CLI did not confirm rename: ${errMsg(e)}` },
-      { status: 502 }
-    );
+  if (SESSION_OPS_MODE === "slash") {
+    // ── SLASH PATH (original ≤1.0.88; broken since 1.0.89, see acp.ts) ──
+    // `/session rename` renames ONLY the current session of the CLI driver:
+    // it is injected as a slash prompt on the target session itself (slashes
+    // do not create turns). Then it is verified against session/list and only
+    // written locally if the CLI confirms; otherwise a visible web error.
+    try {
+      const r = await prompt(id, [{ type: "text", text: `/session rename ${raw}` }]);
+      if (r.error) throw new Error(r.error.message || JSON.stringify(r.error));
+    } catch (e) {
+      return Response.json(
+        { error: `CLI could not rename: ${errMsg(e)}` },
+        { status: 502 }
+      );
+    }
+    try {
+      const title =
+        (await listAgentSessions()).find((x) => x.sessionId === id)?.title ?? "";
+      if (title && title !== previous) finalName = title.trim().slice(0, 80) || raw;
+      else if (title && title === raw) finalName = raw;
+      else throw new Error("session/list does not reflect the rename");
+    } catch (e) {
+      return Response.json(
+        { error: `CLI did not confirm rename: ${errMsg(e)}` },
+        { status: 502 }
+      );
+    }
+  } else {
+    // ── HOST WORKAROUND (1.0.89+): edit the CLI's workspace.yaml ──
+    // under ACP the `/session rename` slash is a no-op (it replies
+    // "Session renamed to: X" without changing session/list) and there is
+    // no official method: the host renames the way the TUI does (slashes
+    // create no turns nor pollute the history). Then it verifies against
+    // session/list.
+    const clean = raw.replace(/[\r\n\t]+/g, " ");
+    try {
+      await renameCliSession(id, clean);
+    } catch (e) {
+      return Response.json(
+        { error: `CLI could not rename: ${errMsg(e)}` },
+        { status: 502 }
+      );
+    }
+    try {
+      const title =
+        (await listAgentSessions()).find((x) => x.sessionId === id)?.title ?? "";
+      if (title !== clean)
+        throw new Error("session/list does not reflect the rename");
+      finalName = clean;
+    } catch (e) {
+      return Response.json(
+        { error: `CLI did not confirm rename: ${errMsg(e)}` },
+        { status: 502 }
+      );
+    }
   }
   // the CLI already confirmed the new title → it is the truth, no local cache
   return Response.json({
@@ -139,14 +178,30 @@ export async function DELETE(_req: Request, { params }: Params) {
     // connection (verified: with the driver open, a prompt to the deleted
     // session would stay alive)
     await closeAgentSession(id).catch(() => {});
-    const r = await adminPrompt(`/session delete ${id} --yes`).catch((e) => ({
-      error: { message: errMsg(e) },
-    }));
-    if (r.error)
-      return Response.json(
-        { error: `The CLI could not delete: ${r.error.message}` },
-        { status: 502 }
-      );
+
+    if (SESSION_OPS_MODE === "slash") {
+      // ── SLASH PATH (original ≤1.0.88; broken since 1.0.89, see acp.ts) ──
+      const r = await adminPrompt(`/session delete ${id} --yes`).catch((e) => ({
+        error: { message: errMsg(e) },
+      }));
+      if (r.error)
+        return Response.json(
+          { error: `The CLI could not delete: ${r.error.message}` },
+          { status: 502 }
+        );
+    } else {
+      // ── HOST WORKAROUND (1.0.89+): remove the CLI's persisted state ──
+      // the yaml dir is the session/list source of truth (see acp.ts)
+      try {
+        await removeCliSessionDir(id);
+      } catch (e) {
+        return Response.json(
+          { error: `Could not remove the CLI session state: ${errMsg(e)}` },
+          { status: 502 }
+        );
+      }
+    }
+
     // official verification: it must disappear from the CLI session/list
     let stillThere: boolean;
     try {
@@ -165,6 +220,10 @@ export async function DELETE(_req: Request, { params }: Params) {
         { status: 502 }
       );
     }
+  } else if (SESSION_OPS_MODE === "host") {
+    // zero-turn session: it is not in session/list, but its state dir can
+    // exist (created on session/new) → only the host workaround cleans it
+    await removeCliSessionDir(id).catch(() => {});
   }
 
   remove(id);

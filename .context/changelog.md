@@ -1,3 +1,21 @@
+## v0.1.3 (26/10/2026, publicar con tag) — lote UI fixes + patch rename/delete
+- Config: el puntito "ACP daemon running" ahora es siempre verde literal
+  (bg-green-500, antes bg-emerald que cambiaba con el acento del tema).
+- Sessions rename/delete: workaround host-side para CLI ≥1.0.89 (los slashes
+  /rename y /session delete son no-ops bajo ACP). El host edita
+  ~/.copilot/session-state/<id>/workspace.yaml directamente; conmutable vía
+  SESSION_OPS_MODE=slash.
+- Móvil: padding del header de sesión igualado a 16px (como el sidebar) y
+  título/session-id comprimidos (leading-tight + id 10px) para que la altura
+  del logo no salte al abrir el drawer.
+- Razonamiento en vivo: cada segmento de thought se cierra de uno en uno
+  cuando termina de llegar (nuevo evento reasoning_done del servidor al
+  empezar texto/tool nuevo; sellado local extra como red de seguridad).
+- URLs en mensajes del usuario autolinkeadas (nuevas pestañas, acento).
+- Bloques de código del markdown: botón copiar sutil que aparece al hover
+  (esquina superior derecha del bloque).
+- Mockup del README actualizado por el usuario (assets/mockup.png).
+
 ## v0.1.2 (25/10/2026) — release publicada (repo público)
 - fix: la UI muestra la versión real (sidebar/About leen
   copilot-web/package.json, que había quedado en 0.0.32 desde la era

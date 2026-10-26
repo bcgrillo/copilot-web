@@ -42,6 +42,7 @@ const es = {
   "chat.copy": "copiar",
   "chat.copied": "copiado",
   "chat.copyTitle": "Copiar respuesta",
+  "chat.codeCopyTitle": "Copiar código",
   "chat.executing": "ejecutando…",
   "chat.emptyTitle": "¿En qué estás trabajando?",
   "chat.emptyText":
@@ -137,6 +138,7 @@ const en: Record<keyof typeof es, string> = {
   "chat.copy": "copy",
   "chat.copied": "copied",
   "chat.copyTitle": "Copy reply",
+  "chat.codeCopyTitle": "Copy code",
   "chat.executing": "executing…",
   "chat.emptyTitle": "What are you working on?",
   "chat.emptyText":

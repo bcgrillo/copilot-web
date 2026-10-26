@@ -10,6 +10,10 @@
  */
 import net from "net";
 import { spawn } from "child_process";
+import { existsSync } from "fs";
+import { readFile, rm, writeFile } from "fs/promises";
+import os from "os";
+import path from "path";
 import type { AvailableCommand } from "@/lib/types";
 
 export const CHAT_CWD = process.env.CHAT_CWD || "/workspace";
@@ -524,6 +528,86 @@ export async function closeAgentSession(sessionId: string): Promise<void> {
   if (!agent.sock || agent.sock.destroyed || !agent.known.has(sessionId)) return;
   await acpRequest("session/close", { sessionId, mcpServers: [] });
   agent.known.delete(sessionId);
+}
+
+// ------------------------------------------------------------------
+// WORKAROUND session ops (rename/delete) — broken since CLI 1.0.89+
+//
+// Up to copilot 1.0.88 the web applied rename/delete by injecting the
+// `/session rename` / `/session delete` slashes as prompts (prompt /
+// adminPrompt). Since 1.0.89 (verified on 1.0.103) under ACP:
+//  - `/session rename X` and `/rename X` reply "Session renamed to: X"
+//    with no real effect (session/list is untouched).
+//  - `/session delete <id> --yes` replies "Deleting the current session
+//    is handled by the CLI host" (it delegates to the host = the web).
+//  - No official ACP method exists: initialize only declares
+//    sessionCapabilities: { close, list } (probes of session/rename,
+//    session/delete, session/setTitle... → "Method not found").
+//
+// Upstream issue to be filed with GitHub (slashes are no-ops under ACP
+// and there is no host API); once fixed, set SESSION_OPS_MODE=slash or
+// replace these host-side helpers and remove this workaround.
+//
+// session/list source of truth discovered: the CLI persists each session
+// in ~/.copilot/session-state/<id>/workspace.yaml (fields `name` and
+// `user_named`; no `name` = zero-turn session). session/list reads it on
+// every call; the CLI does not rewrite `name` while user_named=true
+// (verified across new turns). The TUI does exactly this when renaming.
+// ------------------------------------------------------------------
+
+export type SessionOpsMode = "host" | "slash";
+
+/**
+ * Toggle for the upstream issue: "host" (default) = host-side workaround
+ * over the CLI store (renameCliSession/removeCliSessionDir); "slash" =
+ * the original prompt-slash path (restore once GitHub fixes 1.0.89+).
+ */
+export const SESSION_OPS_MODE: SessionOpsMode =
+  process.env.COPILOT_SESSION_OPS_MODE === "slash" ? "slash" : "host";
+
+/** hex+dashes only, enough to block traversal (ids are UUIDs). */
+const CLI_STATE_ID_RE = /^[0-9a-fA-F-]{16,}$/;
+
+function cliWorkspaceYamlPath(sessionId: string): string | null {
+  if (!CLI_STATE_ID_RE.test(sessionId)) return null;
+  return path.join(
+    process.env.COPILOT_HOME || process.env.HOME || os.homedir(),
+    ".copilot",
+    "session-state",
+    sessionId,
+    "workspace.yaml"
+  );
+}
+
+const quoteYaml = (s: string) =>
+  `'${s.replace(/[\r\n\t]+/g, " ").replace(/'/g, "''")}'`;
+
+/** Renames a CLI session by editing its workspace.yaml. */
+export async function renameCliSession(
+  sessionId: string,
+  name: string
+): Promise<void> {
+  const p = cliWorkspaceYamlPath(sessionId);
+  if (!p || !existsSync(p))
+    throw new Error("workspace.yaml not found for the CLI session");
+  const yaml = await readFile(p, "utf-8");
+  const clean = quoteYaml(name);
+  const next = yaml
+    .replace(/^name:.*$/m, `name: ${clean}`)
+    .replace(/^user_named:.*$/m, "user_named: true")
+    .replace(/^updated_at:.*$/m, `updated_at: ${new Date().toISOString()}`);
+  // zero-turn session: the yaml exists but has no `name` line
+  const out = /^name:/m.test(yaml)
+    ? next
+    : next.replace(/^(user_named:.*)$/m, `name: ${clean}\n$1`);
+  await writeFile(p, out, "utf-8");
+}
+
+/** Removes every trace of the session from the CLI store (idempotent). */
+export async function removeCliSessionDir(sessionId: string): Promise<void> {
+  const p = cliWorkspaceYamlPath(sessionId);
+  if (!p) return;
+  await rm(path.dirname(p), { recursive: true, force: true });
 }
 
 /** Dedicated ops session for slash management commands (delete/rename…). */
