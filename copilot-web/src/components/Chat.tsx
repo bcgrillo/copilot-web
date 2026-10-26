@@ -525,7 +525,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
   const t = useT();
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6 md:py-3.5">
+      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-4 md:px-6 md:py-3.5">
         {/* mobile (sidebar hidden): app logo on the left
             (same size as the sidebar one so it does not jump on open) */}
         <div className="flex shrink-0 items-center md:hidden">
@@ -550,7 +550,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
               <div className="flex min-w-0 items-center gap-0.5">
                 <h1
                   onClick={() => startRename()}
-                  className={`min-w-0 truncate text-sm font-semibold ${
+                  className={`min-w-0 truncate text-sm font-semibold leading-tight ${
                     session ? "cursor-text select-none" : ""
                   }`}
                 >
@@ -566,7 +566,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
                   </button>
                 )}
               </div>
-              <p className="font-mono text-[11px] text-muted-foreground">
+              <p className="font-mono text-[10px] leading-tight text-muted-foreground">
                 {session ? `#${session.id.slice(0, 8)}` : "—"}
               </p>
             </>
@@ -976,6 +976,38 @@ function Dot({ delay }: { delay: string }) {
 }
 
 /** Parses "[Resource link: file://…]" (CLI annotation for attachments): text + chip 📎 */
+const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+
+/** Converts bare URLs in a plain-text user message into real links
+ * (both the resource attachments and the plain message can mix them). */
+function linkify(text: string, key: string): ReactNode {
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = URL_RE.exec(text))) {
+    if (m.index > last)
+      nodes.push(<span key={`${key}t${nodes.length}`}>{text.slice(last, m.index)}</span>);
+    const href = m[1];
+    nodes.push(
+      <a
+        key={`${key}a${nodes.length}`}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="break-all text-emerald underline underline-offset-2 hover:opacity-80"
+      >
+        {href}
+      </a>
+    );
+    last = m.index + href.length;
+  }
+  if (last < text.length || nodes.length === 0)
+    nodes.push(<span key={`${key}t${nodes.length}`}>{text.slice(last)}</span>);
+  return nodes;
+}
+
+/** Renders a user message body: resource attachments become chips and any
+ * bare URL becomes a real link. */
 function userContentNodes(content: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const re = /\s*\[Resource link:\s*file:\/\/([^\]]+)\]/g;
@@ -983,7 +1015,7 @@ function userContentNodes(content: string): ReactNode[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(content))) {
     const text = content.slice(last, m.index).trimEnd();
-    if (text) nodes.push(<span key={`t${nodes.length}`}>{text}</span>);
+    if (text) nodes.push(<span key={`t${nodes.length}`}>{linkify(text, `r${nodes.length}`)}</span>);
     const name = m[1].split("/").pop() || "adjunto";
     nodes.push(
       <span
@@ -997,7 +1029,7 @@ function userContentNodes(content: string): ReactNode[] {
   }
   const rest = content.slice(last).trim();
   if (rest || nodes.length === 0)
-    nodes.push(<span key={`t${nodes.length}`}>{rest}</span>);
+    nodes.push(<span key={`t${nodes.length}`}>{linkify(rest, `e${nodes.length}`)}</span>);
   return nodes;
 }
 
@@ -1022,7 +1054,7 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
         >
           {hasResource
             ? userContentNodes(msg.content)
-            : msg.content}
+            : linkify(msg.content, "m")}
         </div>
       )}
       {msg.ts && (
@@ -1086,6 +1118,39 @@ function CommandBlock({ msg, out }: { msg: ChatMessage; out?: ChatMessage }) {
 const PROSE =
   "prose prose-sm prose-neutral dark:prose-invert max-w-none prose-pre:rounded-xl prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-code:before:hidden prose-code:after:hidden";
 
+/** Code fence: adds a subtle copy button that appears on hover. */
+function CopyCodeBlock({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="group/code relative">
+      <pre {...props}>{children}</pre>
+      <button
+        onClick={() => {
+          const text = extractText(children);
+          if (text) navigator.clipboard.writeText(text).catch(() => {});
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="absolute right-2 top-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-background/80 text-muted-foreground opacity-0 transition-opacity group-hover/code:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
+        title={copied ? t("chat.copied") : t("chat.codeCopyTitle")}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </div>
+  );
+}
+
+/** Flattens react-markdown children into plain text (for copying). */
+function extractText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (node && typeof node === "object" && "props" in node) {
+    return extractText((node as { props: { children?: ReactNode } }).props.children);
+  }
+  return "";
+}
+
 function Reasoning({ text, open = false }: { text: string; open?: boolean }) {
   const t = useT();
   const innerRef = useRef<HTMLParagraphElement>(null);
@@ -1118,7 +1183,12 @@ function Content({ text }: { text: string }) {
   return (
     <div className={PROSE}>
       {text ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkBreaks]}
+          components={{
+            pre: (props) => <CopyCodeBlock {...props} />,
+          }}
+        >
           {text}
         </ReactMarkdown>
       ) : (
@@ -1225,8 +1295,9 @@ function LiveBlock({ turn }: { turn: LiveTurn }) {
           ) : p.kind === "system" ? (
             <SystemLine key={`s${i}`} content={p.content} />
           ) : p.kind === "reasoning" ? (
-            // reasoning spans interleaved at their actual position
-            <Reasoning key={`r${i}`} text={p.content} open />
+            // reasoning spans interleaved at their actual position; sealed
+            // segments (done) collapse one by one as the turn progresses
+            <Reasoning key={`r${i}`} text={p.content} open={!p.done} />
           ) : (
             <Content key={`x${i}`} text={p.content} />
           )

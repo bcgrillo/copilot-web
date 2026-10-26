@@ -279,7 +279,7 @@ export default function SettingsModal({
                 restarting
                   ? "animate-pulse bg-amber-500"
                   : daemon?.alive
-                    ? "bg-emerald"
+                    ? "bg-green-500"
                     : "bg-red-500"
               }`}
             />

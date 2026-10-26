@@ -223,17 +223,37 @@ export async function POST(req: Request) {
               parts.some((p) => p.kind === "tool")
             )
               return;
+            const last = parts[parts.length - 1];
+            // a text chunk following a thought means that reasoning segment
+            // finished streaming → seal it so the UI collapses it
+            if (last && last.kind === "reasoning" && !last.done) {
+              parts[parts.length - 1] = { ...last, done: true };
+              send({ type: "reasoning_done", data: { index: parts.length - 1 } });
+            }
             if (!streamStarted) {
               streamStarted = true;
               msgId = crypto.randomUUID();
               send({ type: "message_start", data: { id: msgId } });
             }
-            const last = parts[parts.length - 1];
-            if (last && last.kind === "text") last.content += c;
-            else parts.push({ kind: "text", content: c });
+            const lastPart = parts[parts.length - 1];
+            if (lastPart && lastPart.kind === "text") {
+              parts[parts.length - 1] = {
+                ...lastPart,
+                content: lastPart.content + c,
+              };
+            } else parts.push({ kind: "text", content: c });
             send({ type: "delta", data: { id: msgId, content: c } });
           } else if (kind === "tool_call") {
             const detail = toolInputDetail(u.rawInput, u.content);
+            // a tool call following a thought means that reasoning segment
+            // finished streaming → seal it so the UI collapses it
+            if (parts.length > 0) {
+              const last = parts[parts.length - 1];
+              if (last && last.kind === "reasoning" && !last.done) {
+                parts[parts.length - 1] = { ...last, done: true };
+                send({ type: "reasoning_done", data: { index: parts.length - 1 } });
+              }
+            }
             parts.push({
               kind: "tool",
               toolCallId:

@@ -17,6 +17,8 @@
   (main+dev). Bug de publicar.sh corregido (--tags → refs explícitas).
 - [x] release v0.1.2: fix versión visible en UI (package.json 0.0.32→0.1.2;
   el tag v0.1.1 publicó tarballs con la versión vieja).
+- [ ] release v0.1.3: lote UI fixes (logo móvil, reasoning uno a uno, URLs
+  linkeadas, botón copiar código, mockup nuevo).
 - [ ] limpieza ramas lualab-xyz: quedan origin/checkpoint-24-10-2026 y
   origin/feature/mcp-helper (candidatas a borrar).
 
@@ -27,9 +29,11 @@
   build (`npm run build`) y en el serve. Ver docs/base-path-deployment.md.
 
 ## Compatibilidad CLI
-- [ ] check-session-delete-rename: comprobar delete y rename de sesión en
-  versiones recientes de copilot-cli (probado con 1.0.80 OK, con 1.0.103 KO).
-  Aislar qué cambió (flags/API/directorios de sesión) y adaptar el server.
+- [x] check-session-delete-rename: comprobado — desde CLI 1.0.89 (verificado
+  1.0.103) rename/delete por slash son no-op bajo ACP; no hay método oficial.
+  Adaptado el server con workaround host-side (edita/borra el store del CLI
+  en ~/.copilot/session-state) conmutable vía SESSION_OPS_MODE=slash cuando
+  GitHub lo repare. Ver feature/session-rename-delete-patch (task.md).
 
 ## Roadmap público (readme)
 - [ ] basic-auth: login single-user para la web (authN/authZ).

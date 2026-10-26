@@ -15,6 +15,7 @@ import type {
   AvailableCommand,
   ChatMessage,
   LiveTurn,
+  MessagePart,
   PermissionOption,
   PermissionReq,
   SessionSummary,
@@ -584,6 +585,8 @@ function Shell() {
               if (last && last.kind === "text") {
                 turn.parts[turn.parts.length - 1] = { ...last, content: last.content + c };
               } else {
+                if (last && last.kind === "reasoning" && !last.done)
+                  turn.parts[turn.parts.length - 1] = { ...last, done: true };
                 turn.parts.push({ kind: "text", content: c });
               }
               sync();
@@ -603,8 +606,22 @@ function Shell() {
               // turn.reasoning se conserva para el estado "…" inicial
               turn.reasoning += c;
               const lastP = turn.parts[turn.parts.length - 1];
-              if (lastP && lastP.kind === "reasoning") lastP.content += c;
+              if (lastP && lastP.kind === "reasoning" && !lastP.done)
+                turn.parts[turn.parts.length - 1] = {
+                  ...lastP,
+                  content: lastP.content + c,
+                };
               else turn.parts.push({ kind: "reasoning", content: c });
+              sync();
+            } else if (ev.type === "reasoning_done") {
+              // server sealed the last reasoning segment (a new text/tool
+              // part started) → collapse it on screen, one by one
+              const idx = (ev.data as { index?: number })?.index ?? -1;
+              const last = turn.parts[turn.parts.length - 1];
+              if (last && last.kind === "reasoning" && !last.done)
+                turn.parts[turn.parts.length - 1] = { ...last, done: true };
+              else if (idx >= 0 && turn.parts[idx]?.kind === "reasoning")
+                turn.parts[idx] = { ...(turn.parts[idx] as Extract<MessagePart, { kind: "reasoning" }>), done: true };
               sync();
             } else if (ev.type === "tool") {
               const t = ev.data as {
