@@ -1,11 +1,66 @@
-# task.md — Ciclo v0.1.3 (lote UI fixes) + patch rename/delete
+# task.md — Split back/front + agentes no-copilot (análisis)
 
-## Estado actual (validation + commit patch integrado)
-- Tests: 65/65 verde (`vitest run --pool=forks --no-file-parallelism` — los
-  workers por defecto agotan threads del cgroup pids.max=256; usar esa forma
-  mientras el entorno esté tenso). tsc --noEmit OK.
-- Commit `2b78c1a` en feature/v0.1.3-ui-fixes: patch host-side rename/delete
-  integrado (acp.ts + route.ts + task/todo). Pushed (checkpoint).
+## api-front-split (26/10+) — objetivo
+Separar despliegues: back (API + daemon ACP) y front en contenedores
+distintos (CodePods tendrá front propio, fork de este repo, contra el back
+de cada container). Además: evaluar genericidad del back para opencode,
+codex, etc.
+
+### Análisis: acoplamiento front↔ACP
+- El front NO habla ACP nunca. Su único contrato: SSE de /api/chat
+  (+ eventos propios: delta/text/thought/tool/reasoning_done/permission)
+  y REST propio (/api/sessions*, /api/commands, /api/status,
+  /api/permission, /api/cancel, /api/daemon, /api/helper/*).
+- TODO el acoplamiento copilot vive en el back (acp.ts 674 líneas):
+  1. transporte: daemon TCP NDJSON :3222 (`copilot --acp`)
+  2. dialecto copilot: session/new (authMethods/modes), session/prompt
+     blocks, session/update, request_permission
+  3. ops de sesión host-side: workspace.yaml (ESPECÍFICO copilot,
+     workaround CLI ≥1.0.89) + fallback slash
+  4. helper MCP ask_user (copilot MCP)
+  5. knobs: COPILOT_ACP_ARGS, SESSION_OPS_MODE
+- Genericidad: conceptos (text/thought/tool deltas, sesiones, permisos)
+  casi universales. Agentes ACP-compliant (opencode ya lo soporta; hay
+  adapters gemini, claude code): swap de adapter, front intacto.
+  Non-ACP (codex): capa traductora -> nuestra schema interna.
+- Plan: interface AgentProvider (lifecycle/sessions/stream/permissions/
+  cwd) en src/lib/agents/{copilot,opencode,codex}; acp.ts queda como
+  cliente ACP shared + adapter copilot para sus rarezas.
+
+### Análisis: split físico
+- Opción A (ahora): CORS + API base. middleware.ts CORS en /api/*
+  (incluye SSE; preflight para PATCH/DELETE; ambos con y sin trailing
+  slash), NEXT_PUBLIC_API_URL en src/lib/api.ts BASE, y API_DISABLED=1
+  opcional para front puro (routes 404). Builds idénticos, dos envs.
+- Opción B (después/repos): pnpm workspace apps/api + apps/web (static
+  export, UI es client-only). Más limpio para forks; migración mayor.
+- Params necesarios: NEXT_PUBLIC_API_URL (front→back abs),
+  CORS_ALLOW_ORIGIN (back), API_DISABLED=1 (front), COPILOT_ACP_PORT,
+  SESSION_OPS_MODE. No hay auth propia (SSE EventSource no lleva
+  headers; auth externa en proxy CodePods).
+
+### v0.1.4 — implementado (26/10)
+- APP_MODE=all|api|front (default all) — ver .context/changelog.md v0.1.4.
+  Guardas runtime (guardApi en rutas) + middleware edge (UI 404 + CORS).
+  En self-hosted el middleware también lee env en runtime.
+- Split E2E verificado con dos servicios codepods (cw-back :3103 api +
+  cw-front :3104) contra el daemon compartido :3222. Hallazgo: `next start`
+  re-evalúa ASSET_PREFIX/env en runtime — el shell pisa .env.local.
+- Opción A HECHO (CORS + API base + modos). Opción B (repos/apps separados)
+  y AgentProvider quedan para siguiente ciclo.
+
+## Estado actual (v0.1.4 — RELEASE LISTA)
+- Rama `feature/api-front-split` ( último commit 570e5a0, pushed); release
+  v0.1.4 = split + auth dual-token.
+- Tests: 117/117 verde en 16 ficheros (suite pid-safe, usersCli primero);
+  nuevos: auth HTTP routes (login/refresh/state) + usersCli subprocess;
+  bin/users.ts con error paths limpios; openapi 401 reasons + --no-auth
+  documentados en spec (test assert). tsc --noEmit OK.
+- Docs: README.md + README.es.md (badge v0.1.4, bullets auth, limits/roadmap
+  caducos fuera); changelog v0.1.4 marcada publicada; cw-sync hecho
+  (users.ts, openapi spec/test, 4 test files nuevos en /workspace/cw-split).
+- Siguiente paso: squash a dev → main → tag v0.1.4 → `./publicar.sh v0.1.4`.
+- Pendiente siguiente ciclo: AgentProvider (opencode/codex), split repos.
 
 ## session-rename-delete-patch — workaround rename/delete para CLI 1.0.89+ (integrado)
 - (Trabajo host-side del user, rama feature/session-rename-delete-patch,
@@ -89,6 +144,27 @@ Ciclo completo ejecutado el 24/10/2026 y verificado end-to-end.
    creada: copilot-web-v0.1.0.tar.gz (116KB) + install.sh assets uploaded.
 6. Docs post-release en dev (25a7eed): badges release → v0.1.0, changelog v0.1.0,
    decisions versionado aplicado, todo.md al día.
+
+## Estado ops (v0.1.4 auth — LIVE)
+- main :3100 + daemon :3222 (helper MCP token) con auth dual-token.
+- cw-back :3103 (APP_MODE=api, CORS codepods origin) y cw-front :3104
+  (APP_MODE=front, build ASSET_PREFIX=/api/proxy/copilot-web/cw-front,
+  API=/api/proxy/copilot-web/cw-back; fix: prefijos públicos del proxy).
+- Verificado E2E: login admin OK, 401 sin token, Bearer 200 (main+back),
+  refresh rotación OK, CORS preflight 204.
+- Servidor :3100 en /workspace/cw-split es COPIA front-split (sin auth UI).
+
+## Logout (8f6420c, pending re-test user)
+- Botón LogOut al final del footer (derecha del toggle de tema), solo con
+  authGate==="ok" (auth ON + firmado); limpia tokens y muestra Login.
+  i18n footer.logout es/en. tsc OK + 100/100 (12/12, corrida secuencial
+  por pid-limit del contenedor) + rebuild/restart verificado.
+## Mejoras visuales login (a673730, pending re-test user)
+- Login rediseñado (Login.tsx + i18n.tsx es/en): marca (logo + "Copilot
+  Web") fuera de la card arriba; título "Sign in" dentro; instrucción con
+  copilot-web --help en <code>; labels Username/Password bold fuera de los
+  inputs; botón bg-emerald (tema) con icono lucide LogIn; versión sutil
+  bajo la card. tsc + suite 100/100 + rebuilds + relanzamiento verificados.
 
 ## Pendiente (siguiente tarea)
 - Pipeline CI interno pre-beta (lint/tsc/build/test por PR; badges de tests).

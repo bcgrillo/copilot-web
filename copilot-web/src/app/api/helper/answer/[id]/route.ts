@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 /** Respuesta del usuario web a una pregunta del MCP helper (card en el chat). */
 import { answerAsk } from "@/lib/helperAsk";
 
@@ -8,6 +9,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const g = guardApi(req);
+  if (g) return g;
   const { id } = await params;
   let body: { answer?: string };
   try {

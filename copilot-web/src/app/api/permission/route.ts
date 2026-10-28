@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 import { respondPermission } from "@/lib/acp";
 
 export const runtime = "nodejs";
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
  * Body: {reqId, allow?: boolean} or {reqId, optionId} (a permission with
  * options like allow_always / reject_always). */
 export async function POST(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   const body = await req.json().catch(() => null);
   const reqId = Number(body?.reqId);
   if (!Number.isInteger(reqId))

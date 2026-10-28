@@ -25,7 +25,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, authFetch } from "@/lib/api";
 import { useT, useLang, localeOf } from "@/lib/i18n";
 import type { PendingAsk } from "@/lib/helperAsk";
 import { MAX_FILES, MAX_FILE_BYTES } from "@/lib/limits";
@@ -294,7 +294,7 @@ export default function Chat({
     const load = async () => {
       if (!session?.id) return;
       try {
-        const r = await fetch(apiUrl(`/api/status/${session.id}`));
+        const r = await authFetch(apiUrl(`/api/status/${session.id}`));
         if (r.ok) {
           const d = await r.json();
           if (live) setWstatus(d);
@@ -346,7 +346,7 @@ export default function Chat({
     let live = true;
     const load = async () => {
       try {
-        const r = await fetch(apiUrl("/api/helper/ask"));
+        const r = await authFetch(apiUrl("/api/helper/ask"));
         if (r.ok) {
           const d = await r.json();
           if (live) setHelperAsks(d.asks ?? []);
@@ -365,7 +365,7 @@ export default function Chat({
   const answerHelper = async (id: string, answer: string) => {
     setHelperAsks((as) => as.filter((a) => a.id !== id));
     try {
-      await fetch(apiUrl(`/api/helper/answer/${id}`), {
+      await authFetch(apiUrl(`/api/helper/answer/${id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answer }),
@@ -509,7 +509,7 @@ c.name.toLowerCase().startsWith(input.slice(1).toLowerCase())
   async function stop() {
     if (!session?.id) return;
     try {
-      await fetch(apiUrl("/api/cancel"), {
+      await authFetch(apiUrl("/api/cancel"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: session.id }),

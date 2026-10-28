@@ -126,7 +126,14 @@ async function handle(msg) {
 async function askUser(args) {
   const res = await fetch(`${WEB_URL}/api/helper/ask`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // the launcher injects COPILOT_WEB_TOKEN (internal tokens skip the
+      // bearer guard for /api/helper/* while being useless elsewhere)
+      ...(process.env.COPILOT_WEB_TOKEN
+        ? { Authorization: `Bearer ${process.env.COPILOT_WEB_TOKEN}` }
+        : {}),
+    },
     body: JSON.stringify({
       question: args.question,
       kind: args.kind ?? "info",

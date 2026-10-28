@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 /** ask_user questions from the MCP helper. The helper (copilot-web/mcp/ask-user.mjs)
  * POSTs here and long-polls for the answer; the UI reads the pending asks
  * and answers. Everything in RAM — Principle 0. */
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * `poll=1` → additionally waits up to 5 min for the user answer (helper
  * long-poll). */
 export async function POST(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   let body: { question?: string; kind?: string; options?: string[]; poll?: boolean } | null;
   try {
     body = await req.json();
@@ -31,6 +34,8 @@ export async function POST(req: Request) {
 /** GET: pending asks for the UI (client polling) or the state of a single
  * ask via ?id= (helper long-poll up to 5 min). */
 export async function GET(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   if (!id) return Response.json({ asks: pendingAsks() });

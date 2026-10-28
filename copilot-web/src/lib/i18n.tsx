@@ -76,6 +76,7 @@ const es = {
   "footer.themeLight": "Tema: claro",
   "footer.themeDark": "Tema: oscuro",
   "footer.helpTitle": "Ayuda y acerca de",
+  "footer.logout": "Cerrar sesión",
   "about.line": "Una interfaz web para GitHub Copilot CLI, creada como proyecto comunitario.",
   "about.disclaimer":
     "Proyecto comunitario NO oficial. No está afiliado, respaldado ni patrocinado por GitHub, Microsoft ni OpenAI. «GitHub Copilot» es una marca de GitHub, Inc.",
@@ -109,6 +110,18 @@ const es = {
   "config.restartWarn":
     "Mata el proceso del Copilot CLI: las sesiones activas se pierden en frío (no se pueden recargar tras el reinicio). Úsalo solo si el backend queda colgado.",
   "config.failed": "no disponible",
+  // login (auth ON)
+  "login.brand": "Copilot Web",
+  "login.title": "Iniciar sesión",
+  "login.hint": "Escribe tu usuario y contraseña abajo para iniciar tu sesión.",
+  "login.signup": "¿No tienes cuenta? Consulta cómo configurar una ejecutando",
+  "login.signupTail": "en tu consola.",
+  "login.user": "Usuario",
+  "login.password": "Contraseña",
+  "login.submit": "Entrar",
+  "login.busy": "Verificando…",
+  "login.error": "Usuario o contraseña incorrectos",
+  "login.netError": "No se pudo conectar con el backend",
 };
 
 const en: Record<keyof typeof es, string> = {
@@ -172,6 +185,7 @@ const en: Record<keyof typeof es, string> = {
   "footer.themeLight": "Theme: light",
   "footer.themeDark": "Theme: dark",
   "footer.helpTitle": "Help & About",
+  "footer.logout": "Log out",
   "about.line": "A web interface for the GitHub Copilot CLI, built as a community project.",
   "about.disclaimer":
     "Unofficial community project. It is not affiliated with, endorsed by, or sponsored by GitHub, Microsoft or OpenAI. “GitHub Copilot” is a trademark of GitHub, Inc.",
@@ -205,6 +219,18 @@ const en: Record<keyof typeof es, string> = {
   "config.restartWarn":
     "Kills the Copilot CLI process: active sessions are lost cold (they cannot be reloaded after the restart). Use it only if the backend is stuck.",
   "config.failed": "unavailable",
+  // login (auth ON)
+  "login.brand": "Copilot Web",
+  "login.title": "Sign in",
+  "login.hint": "Enter your username and password below to log into your account.",
+  "login.signup": "Don't have an account? Check how to configure one using",
+  "login.signupTail": "in your console.",
+  "login.user": "Username",
+  "login.password": "Password",
+  "login.submit": "Sign in",
+  "login.busy": "Checking…",
+  "login.error": "Wrong user or password",
+  "login.netError": "Could not reach the backend",
 };
 
 export const dict: Record<Lang, Record<string, string>> = { en, es };

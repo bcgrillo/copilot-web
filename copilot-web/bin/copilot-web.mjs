@@ -6,10 +6,12 @@
  * web server. The web is not a standalone service: if the daemon is
  * already up it reuses it; otherwise it spawns it.
  */
-import { spawn, execSync } from "node:child_process";
+import { execFileSync, spawn, execSync } from "node:child_process";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { createHmac } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const argv = process.argv.slice(2);
@@ -21,6 +23,8 @@ const opts = {
   build: false,
   daemon: true,
   helper: process.env.COPILOT_WEB_HELPER !== "0",
+  noAuth: false,
+  userMgmt: null,
   lang: process.env.COPILOT_WEB_LANG || "",
   model: process.env.COPILOT_MODEL || "",
 };
@@ -44,6 +48,18 @@ for (let i = 0; i < argv.length; i++) {
         "  --no-helper         do not register the web ask-user MCP helper\n" +
         "                      with the daemon (on by default; needs a freshly\n" +
         "                      spawned daemon)\n" +
+        "  --no-auth           disable the built-in bearer authentication for\n" +
+        "                      this server instance (default: auth ON — the\n" +
+        "                      server refuses to start with zero users)\n" +
+        "  --add-user <u> [--password <pw>]\n" +
+        "                      create a UI user (password prompted if omitted)\n" +
+        "  --set-password <u> [--password <pw>]\n" +
+        "                      change a user's password (revokes its sessions)\n" +
+        "  --del-user <u>      remove a user and revoke its sessions\n" +
+        "  --list-users        list usernames\n" +
+        "  --revoke <u>        revoke a user's passwords/tokens\n" +
+        "  --revoke-all        revoke every user's sessions\n" +
+        "  --helper-token      print the MCP helper token\n" +
         "  -h, --help"
     );
     process.exit(0);
@@ -56,9 +72,67 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--build") opts.build = true;
   else if (a === "--no-daemon") opts.daemon = false;
   else if (a === "--no-helper") opts.helper = false;
+  else if (a === "--no-auth") opts.noAuth = true;
+  else if (a === "--add-user") opts.userMgmt = { kind: "add", user: argv[++i] };
+  else if (a === "--set-password") opts.userMgmt = { kind: "set-password", user: argv[++i] };
+  else if (a === "--del-user") opts.userMgmt = { kind: "del-user", user: argv[++i] };
+  else if (a === "--revoke") opts.userMgmt = { kind: "revoke", user: argv[++i] };
+  else if (a === "--revoke-all") opts.userMgmt = { kind: "revoke-all" };
+  else if (a === "--list-users") opts.userMgmt = { kind: "list-users" };
+  else if (a === "--helper-token") opts.userMgmt = { kind: "helper-token" };
+  else if (a === "--password") opts.userPassword = argv[++i];
   else {
     console.error(`unknown arg: ${a}`);
     process.exit(1);
+  }
+}
+
+/** internal (never-expiring) MCP helper token from the auth store, if any */
+function helperTokenFromStore() {
+  try {
+    const storePath =
+      process.env.COPILOT_WEB_AUTH_FILE || path.join(os.homedir(), ".copilot-web", "auth.json");
+    const secret = JSON.parse(readFileSync(storePath, "utf8")).secret;
+    if (typeof secret !== "string" || secret.length < 16) return null;
+    const body = Buffer.from(
+      JSON.stringify({ t: "internal", u: "__helper__", v: 0 })
+    ).toString("base64url");
+    const mac = createHmac("sha256", secret).update(body).digest("base64url");
+    return `${body}.${mac}`;
+  } catch {
+    return null;
+  }
+}
+
+/** does the auth store exist with at least one user? */
+function authUserCount() {
+  try {
+    const storePath =
+      process.env.COPILOT_WEB_AUTH_FILE || path.join(os.homedir(), ".copilot-web", "auth.json");
+    const users = JSON.parse(readFileSync(storePath, "utf8")).users || {};
+    return Object.keys(users).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** user-management mode: run the CLI once and exit with its status */
+function runUserMgmt() {
+  const f = opts.userMgmt;
+  const args = [`--${f.kind}`, ...(f.user ? [f.user] : [])];
+  if ((f.kind === "add" || f.kind === "set-password") && opts.userPassword)
+    args.push("--password", opts.userPassword);
+  const script = path.join(root, "bin", "users.ts");
+  try {
+    console.log(`[copilot-web] user management (${f.kind})…`);
+    execFileSync(
+      process.execPath,
+      ["--experimental-strip-types", script, ...args],
+      { stdio: "inherit" }
+    );
+    return 0;
+  } catch (e) {
+    return e.status ?? 1;
   }
 }
 
@@ -103,6 +177,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const localEnv = loadLocalEnv();
 
+// ---- user management mode: run and exit (no server) ----------------------
+if (opts.userMgmt) {
+  const code = runUserMgmt();
+  process.exit(code);
+}
+
 /** modelo que le fue pasado al daemon YA en marcha (leo su /proc/<pid>/environ):
  * al reutilizar daemon, el status-bar debe mostrar el modelo real, no perderlo. */
 function readDaemonModel(acpPort) {
@@ -124,6 +204,20 @@ function readDaemonModel(acpPort) {
   }
   return "";
 }
+
+// ---- auth startup check (server mode) ------------------------------------
+// default: authentication ON. Refuse to start with zero configured users
+// unless --no-auth was passed (or an explicit set is empty → same check).
+const disabled = opts.noAuth || process.env.NO_AUTH === "1";
+if (!disabled && authUserCount() === 0) {
+  console.error(
+    "[copilot-web] authentication is enabled by default but no users are configured.\n" +
+      "  Create one first, e.g.:  copilot-web --add-user admin --password <pw>\n" +
+      "  (or start with --no-auth to run this instance without authentication)"
+  );
+  process.exit(1);
+}
+if (disabled) console.log("[copilot-web] authentication disabled (--no-auth)");
 
 if (await probe(opts.acpPort)) {
   console.log(`[copilot-web] reusing ACP daemon on :${opts.acpPort}`);
@@ -186,7 +280,12 @@ if (await probe(opts.acpPort)) {
             type: "local",
             command: "node",
             args: [path.join(root, "mcp", "ask-user.mjs")],
-            env: { COPILOT_WEB_URL: `http://localhost:${opts.port}` },
+            env: {
+              COPILOT_WEB_URL: `http://localhost:${opts.port}`,
+              ...(helperTokenFromStore()
+                ? { COPILOT_WEB_TOKEN: helperTokenFromStore() }
+                : {}),
+            },
           },
         },
       })
@@ -233,7 +332,8 @@ const child = spawn(
       COPILOT_ACP_ARGS: opts.copilotArgs || "",
       COPILOT_WEB_LANG: opts.lang || "",
       COPILOT_MODEL: opts.model || "",
-    },
+    NO_AUTH: opts.noAuth || process.env.NO_AUTH === "1" ? "1" : "",
+  },
   }
 );
 
