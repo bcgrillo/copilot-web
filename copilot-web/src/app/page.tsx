@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import pkg from "../../package.json";
 import { syncThemeAndFavicon } from "@/lib/cw";
-import { CircleHelp, Moon, Settings2, Sun, SunMoon } from "lucide-react";
+import { CircleHelp, LogOut, Moon, Settings2, Sun, SunMoon } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import Chat from "@/components/Chat";
 import AboutModal from "@/components/AboutModal";
 import SettingsModal from "@/components/SettingsModal";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, authFetch, clearTokens, getAccessToken, getRefreshToken } from "@/lib/api";
+import Login from "@/components/Login";
 import { LangProvider, useT } from "@/lib/i18n";
 import type {
   Attachment,
@@ -73,16 +74,41 @@ function Shell() {
   const [menuOpen, setMenuOpen] = useState(false); // drawer de sesiones (mobile)
   const [aboutOpen, setAboutOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // authentication gate: "unknown" (checking), "off" (NO_AUTH), "ok" (auth
+  // on and tokens present — a stale pair self-heals via refresh; the
+  // "cw-unauth" event demotes it to "on" and shows the login overlay) or
+  // "on" (auth required, login screen).
+  const [authGate, setAuthGate] = useState<"unknown" | "off" | "ok" | "on">("unknown");
   // slash commands cached per session (composer palette)
   const [commands, setCommands] = useState<Record<string, AvailableCommand[]>>({});
   const abortRef = useRef<AbortController | null>(null);
 
   const t = useT();
   const loadSessions = useCallback(async (): Promise<SessionSummary[]> => {
-    const res = await fetch(apiUrl("/api/sessions"));
+    const res = await authFetch(apiUrl("/api/sessions"));
     const data = await res.json();
     // the server returns the list sorted by last activity
     return data.sessions as SessionSummary[];
+  }, []);
+
+  // auth state probe (public endpoint) + single sign-out listener
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(apiUrl("/api/auth/state"), { credentials: "include" });
+        const d = await r.json();
+        if (!d?.auth) setAuthGate("off");
+        else if (getAccessToken() || getRefreshToken()) setAuthGate("ok");
+        else setAuthGate("on");
+      } catch {
+        // backend unreachable: let the normal error path handle it once up
+        setAuthGate("ok");
+      }
+    })();
+    const unauth = () => setAuthGate((g) => (g === "off" ? "off" : "on"));
+    window.addEventListener("cw-unauth", unauth);
+    return () => window.removeEventListener("cw-unauth", unauth);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -110,7 +136,7 @@ function Shell() {
       try {
         let data = await loadSessions();
         if (data.length === 0) {
-          const res = await fetch(apiUrl("/api/sessions"), { method: "POST" });
+          const res = await authFetch(apiUrl("/api/sessions"), { method: "POST" });
           data = [(await res.json()).session];
         }
         setSessions(data);
@@ -132,7 +158,10 @@ function Shell() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authGate === "off" || authGate === "ok"]);
+
+  // (session bootstrap runs once the auth gate is resolved; a login reload
+  // restarts the whole shell)
 
   // the URL always reflects the open session (?s=<id>) for shareability
   useEffect(() => {
@@ -158,7 +187,7 @@ function Shell() {
   /** snapshot de comandos slash para la paleta del composer (best-effort). */
   const loadCommands = useCallback(async (id: string) => {
     try {
-      const res = await fetch(apiUrl(`/api/commands/${id}`));
+      const res = await authFetch(apiUrl(`/api/commands/${id}`));
       const { commands: cmds } = (await res.json()) as {
         commands?: AvailableCommand[];
       };
@@ -181,7 +210,7 @@ function Shell() {
       setRunningIds((prev) => ({ ...prev, [id]: true }));
       const tick = async () => {
         try {
-          const res = await fetch(apiUrl(`/api/sessions/${id}`));
+          const res = await authFetch(apiUrl(`/api/sessions/${id}`));
           const { session } = res.ok
             ? ((await res.json()) as {
                 session: SessionSummary & {
@@ -231,7 +260,7 @@ function Shell() {
   const hydrateDetail = useCallback(async (id: string) => {
     setLoadingIds((prev) => ({ ...prev, [id]: true }));
     try {
-      const res = await fetch(apiUrl(`/api/sessions/${id}`));
+      const res = await authFetch(apiUrl(`/api/sessions/${id}`));
       if (!res.ok) return null;
       const { session } = await res.json() as {
         session: SessionSummary & {
@@ -408,7 +437,7 @@ function Shell() {
   }
 
   const createSession = useCallback(async () => {
-    const res = await fetch(apiUrl("/api/sessions"), { method: "POST" });
+    const res = await authFetch(apiUrl("/api/sessions"), { method: "POST" });
     const { session } = await res.json();
     setSessions((prev) => [session, ...prev]);
     setActiveId(session.id);
@@ -424,7 +453,7 @@ function Shell() {
   const renameSession = useCallback(async (id: string, name: string) => {
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
     try {
-      const res = await fetch(apiUrl(`/api/sessions/${id}`), {
+      const res = await authFetch(apiUrl(`/api/sessions/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -451,7 +480,7 @@ function Shell() {
     }
     let ok = true;
     try {
-      const res = await fetch(apiUrl(`/api/sessions/${id}`), { method: "DELETE" });
+      const res = await authFetch(apiUrl(`/api/sessions/${id}`), { method: "DELETE" });
       if (!res.ok) {
         const { error } = (await res.json().catch(() => ({}))) as { error?: string };
         setError(error || t("err.delete", { n: res.status }));
@@ -489,7 +518,7 @@ function Shell() {
       abortRef.current = ac;
 
       try {
-        const res = await fetch(apiUrl("/api/chat"), {
+        const res = await authFetch(apiUrl("/api/chat"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: ac.signal,
@@ -779,7 +808,7 @@ function Shell() {
           ) ?? null;
       }
       try {
-        const res = await fetch(apiUrl("/api/permission"), {
+        const res = await authFetch(apiUrl("/api/permission"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
@@ -836,6 +865,24 @@ function Shell() {
     [startPoll, stickyPerms, liveTurns, t]
   );
 
+  // login screen takes over before any session bootstrap
+  if (authGate === "unknown") {
+    return (
+      <div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">
+        {t("chat.loading")}
+      </div>
+    );
+  }
+  if (authGate === "on") {
+    return (
+      <Login
+        onDone={() => {
+          // full reload: the shell re-probes the gate with the fresh tokens
+          window.location.reload();
+        }}
+      />
+    );
+  }
   if (!loaded) {
     return (
       <div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">
@@ -892,6 +939,19 @@ function Shell() {
                 <Moon className="h-3.5 w-3.5" />
               )}
             </button>
+            {/* log out: only when auth is ON and the user is signed in */}
+            {authGate === "ok" && (
+              <button
+                onClick={() => {
+                  clearTokens();
+                  setAuthGate("on"); // back to the Login screen
+                }}
+                className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t("footer.logout")}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            )}
             </div>
           </div>
         }

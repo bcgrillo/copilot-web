@@ -1,3 +1,59 @@
+## v0.1.4 (30/10/2026, publicada — repo público + tag) — split back/front + autenticación
+### split back/front: APP_MODE + CORS
+- `APP_MODE=all|api|front` (default all): monolito / solo-back / solo-front.
+  Gates en runtime: helper `guardApi()` en las 10 rutas API (front → 404
+  json), middleware edge para bloquear la UI en modo api (404 "ui-disabled")
+  y CORS de /api/*. En self-hosted el middleware lee el env en runtime
+  (no horneado: se puede conmutar modo/CORS sin rebuild).
+- `CORS_ALLOW_ORIGIN`: origen exacto, lista por comas o "*". Unset ⇒ sin
+  headers (comportamiento idéntico al anterior, e.g. proxy CodePods).
+  OPTIONS/preflight → 204 con headers cuando hay CORS.
+- `NEXT_PUBLIC_API_URL`: URL absoluta back para front separado (gana a
+  NEXT_PUBLIC_BASE_PATH; normaliza trailing slash). El front sigue el
+  contrato SSE/REST intacto — cero acoplamiento ACP desde el UI.
+- Contrato de la API auto-documentado: nueva ruta `GET /api/openapi` que
+  sirve un spec OpenAPI 3.1 escrito a mano (14 paths, esquemas compartidos,
+  eventos SSE x-sse-events en /api/chat) — sin dependencias de codegen;
+  gateada por guardApi como el resto de /api.
+### autenticación dual-token (auth ON por defecto)
+- Login + pantalla de login en el front (`/api/login` public, estilo About).
+  Bearer `access` 15 min + `refresh` single-use 90 d rotado en cada refresh
+  (reuso ⇒ revoca cadena; login nuevo ⇒ cadena nueva por dispositivo).
+  Almacenamiento: browser localStorage, `authFetch` en front con retry
+  single-flight + coordinación cross-tab (ROTATING_KEY 8 s) + evento
+  `cw-unauth` → overlay login.
+- Almacén `~/.copilot-web/auth.json` (chmod 600, override
+  COPILOT_WEB_AUTH_FILE para tests): scrypt+salt y pepper HMAC con la
+  secret del propio fichero. Borrar el fichero = revocar todo. Tokens
+  sobreviven a reinicios.
+- CLI de gestión (launcher): `--add-user/--set-password/--del-user/
+  --list-users/--revoke/--revoke-all/--helper-token` (bin/users.ts vía
+  `node --experimental-strip-types`; nunca imprime hashes; contraseña débil
+  (<8) avisa sin bloquear; prompt doble si no hay --password).
+- `--no-auth` (env NO_AUTH=1 en el child): saca auth en una instancia.
+  Sin flag y 0 usuarios ⇒ el launcher se niega a arrancar (hint del
+  comando). Helper MCP con token interno permanente (helperToken()
+  inyectado en la config por launcher y por ensureHelperFile del daemon).
+- Guard: `guardApi(req)` en TODAS las rutas — 401 fail-safe sin Request;
+  exentas /api/login, /api/auth/state, /api/auth/refresh, /api/openapi;
+  refresh NO vale como bearer normal; 401 con www-authenticate.
+- CORS: `Access-Control-Allow-Headers` añade "authorization" (middleware +
+  corsHeadersRuntime). Cross-origin sin credenciales.
+- OpenAPI: info.description documenta las razones 401 exactas (missing-token
+  | invalid-token | wrong-token-type | expired | revoked | no-auth-file),
+  el guard skip con `--no-auth` y que /api/login responde 400
+  auth-disabled en ese modo (ambos escenarios ON/OFF reflejados).
+- CLI de usuarios (bin/users.ts): rutas de error robustecidas (usuario
+  duplicado / inexistente → stderr limpio + exit 1; del-user idempotente
+  → exit 0).
+- Tests: auth.test.ts (~25) + auth HTTP routes (login 4, refresh 4,
+  state 2) + usersCli.test.ts (7 subprocess, pid-safe: corre primero).
+  Suite 117/117 en 16 ficheros, tsc OK, build OK. Live E2E verificado
+  (login, sesiones, chat, SSE, logout) en :3100/:3103/:3104.
+- Release: squash a dev + merge main + tag v0.1.4 + push repo público
+  (publicar.sh). Pendiente siguiente ciclo: AgentProvider (opencode/codex),
+  split de repos apps/api + apps/web.
+
 ## v0.1.3 (26/10/2026, publicar con tag) — lote UI fixes + patch rename/delete
 - Config: el puntito "ACP daemon running" ahora es siempre verde literal
   (bg-green-500, antes bg-emerald que cambiaba con el acento del tema).

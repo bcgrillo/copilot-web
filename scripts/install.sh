@@ -65,6 +65,21 @@ fi
 
 npm run build
 
+# --- CLI on PATH (best effort) ---------------------------------------------
+# The launcher doubles as a CLI (users, --no-auth, --port, ...). Put it on
+# PATH so `copilot-web --add-user admin` works without a global npm install.
+CLI_DIR="$HOME/.local/bin"
+mkdir -p "$CLI_DIR" 2>/dev/null
+if ln -sf "$APP/bin/copilot-web.mjs" "$CLI_DIR/copilot-web" 2>/dev/null; then
+  echo "[copilot-web] CLI: $CLI_DIR/copilot-web (--help for options)"
+  case ":$PATH:" in
+    *":$CLI_DIR:"*) : ;;
+    *) echo "[copilot-web] note: add \"$CLI_DIR\" to PATH to use \`copilot-web\` anywhere" ;;
+  esac
+else
+  echo "[copilot-web] CLI: node $APP/bin/copilot-web.mjs --help"
+fi
+
 echo
 echo "[copilot-web] built. starting launcher (web :3100 + daemon :3222)"
 echo "[copilot-web] press Ctrl+C to stop; restart any time with: npm run serve"

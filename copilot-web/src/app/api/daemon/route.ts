@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 /** ACP daemon (Copilot CLI) status and restart — beta.
  * GET: alive? pid/port/model read from /proc.
  * POST {action:"restart"}: kills the process and respawns it with the OLD
@@ -6,6 +7,8 @@
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+
+import { helperToken } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,7 +108,13 @@ function ensureHelperFile(): string | null {
             type: "local",
             command: "node",
             args: [mcpScript],
-            env: { COPILOT_WEB_URL: `http://localhost:${webPort}` },
+            env: {
+              COPILOT_WEB_URL: `http://localhost:${webPort}`,
+              // static internal token so the helper keeps working with
+              // auth enabled (injected by the launcher too, but daemon
+              // restarts may regenerate the config file)
+              COPILOT_WEB_TOKEN: helperToken() || "",
+            },
           },
         },
       })
@@ -116,7 +125,9 @@ function ensureHelperFile(): string | null {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   try {
     const alive = await probe(ACP_PORT);
     const d = alive ? findDaemon() : null;
@@ -132,6 +143,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   let action = "";
   try {
     const j = await req.json();

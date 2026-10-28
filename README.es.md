@@ -14,7 +14,7 @@
   <a href="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/estado-beta-orange.svg?style=flat-square" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/bcgrillo/copilot-web?style=flat-square&label=issues" /></a>
-  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.2-blue.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.4-blue.svg?style=flat-square" /></a>
 </p>
 
 <p align="center">
@@ -63,6 +63,8 @@ plataforma.
   historial se repite desde ACP (`session/load`). Nada se escribe en disco.
 - **Interfaz EN/ES** — inglés por defecto con español autodetectado (idioma del
   navegador); los operadores pueden fijarla al arrancar con `--lang es`.
+- **Login + auth por bearer** — UI protegida por contraseña con access tokens
+  de vida corta y refresh tokens rotados de un solo uso (ver Autenticación).
 
 ## Requisitos
 
@@ -105,6 +107,11 @@ no hay nada que hacer; si no, escríbelas una vez en `.env.local`.
 
 ## Opciones de la CLI
 
+El instalador crea un symlink `~/.local/bin/copilot-web`, así que los comandos
+de abajo funcionan desde cualquier directorio. Alternativas: `npm i -g .` instala
+el comando globalmente, o ejecútalo desde un clon con
+`node copilot-web/bin/copilot-web.mjs`.
+
 | Opción | Por defecto | Descripción |
 | --- | --- | --- |
 | `--port <n>` | `3100` | Puerto del servidor web |
@@ -116,12 +123,62 @@ no hay nada que hacer; si no, escríbelas una vez en `.env.local`.
 | `--build` | off | Ejecutar `next build` antes de arrancar |
 | `--no-daemon` | off | Esperar un daemon ya en marcha, no abrir uno |
 | `--no-helper` | off | No registrar la tool MCP `ask_user` de la web en el daemon (el helper aplica a daemons recién abiertos; en reuso imprime un aviso) |
+| `--no-auth` | off | Arrancar esta instancia con autenticación desactivada (por defecto: auth ON) |
+| `--add-user <u> [--password <pw>]` | — | Crear un usuario de la UI (contraseña por prompt si se omite); contraseñas débiles avisan, no bloquean |
+| `--set-password <u> [--password <pw>]` | — | Cambiar la contraseña de un usuario (revoca sus sesiones) |
+| `--del-user <u>` | — | Eliminar un usuario (y revocar sus sesiones) |
+| `--list-users` | — | Listar usuarios (nunca se muestran credenciales) |
+| `--revoke <u>` / `--revoke-all` | — | Revocar al instante los tokens de un usuario / de todos |
+| `--helper-token` | — | Imprimir el token interno del helper MCP (para `COPILOT_WEB_TOKEN`) |
 
 Por defecto **no se pasan flags extra**: `copilot --acp` pide permiso por ACP
 para las tools restringidas, y la web muestra una tarjeta permite/deniega por
 cada petición. El valor especial `--copilot-args "allow-all"` se traduce a
 `--allow-all-tools --allow-all-urls --allow-all-paths` (sin prompts de
 permisos). Pasa tus propios flags para restringir más al agente.
+
+## Autenticación
+
+Por defecto la autenticación está **activada**; el servidor se niega a arrancar
+sin usuarios configurados (usa `--no-auth` para sacar auth en una instancia
+puntual, p. ej. un contenedor desechable):
+
+```bash
+copilot-web --add-user admin --password s3cret   # usuario con hash scrypt
+copilot-web                                      # auth on, pantalla de login
+copilot-web --no-auth                            # auth off para esta instancia
+```
+
+- La UI muestra una pantalla de login; después cada llamada lleva un header
+  `Authorization: Bearer <access>`.
+- El login emite un **access token** corto (15 min) y un **refresh token** de
+  un solo uso (90 días, rotado en cada refresh; refrescar con un refresh ya
+  usado revoca la cadena rotada — detección de reuso).
+- Las contraseñas se guardan con scrypt y sal por usuario, más un pepper HMAC
+  cuya clave (`~/.copilot-web/auth.json`, `chmod 600`) se genera en el primer
+  arranque. Borrar ese archivo revoca todos los logins. Los tokens sobreviven
+  a reinicios del servidor.
+- `--set-password`, `--revoke`, `--revoke-all` y `--del-user` invalidan tokens
+  al instante.
+- El helper MCP `ask_user` se autentica con un token interno permanente (el
+  launcher lo inyecta automáticamente en la config del helper).
+- Exentos del bearer: `/api/login`, `/api/auth/state`, `/api/auth/refresh` y
+  `/api/openapi` (la documentación de la API).
+
+## Despliegues separados (back + front)
+
+Un mismo build puede correr como servidor único, backend-solo o frontend-solo
+— se elige con `APP_MODE`:
+
+| Env | Default | Aplica a | Descripción |
+| --- | --- | --- | --- |
+| `APP_MODE` | `all` | servidor | `all` = UI + API (monolito self-host) · `api` = contenedor backend (la UI responde 404) · `front` = frontend puro (`/api/*` responde 404) |
+| `CORS_ALLOW_ORIGIN` | *(vacío)* | servidor | Acceso cross-origin a `/api/*` desde un front separado: un origen exacto, lista por comas, o `*`. Sin valor no hay headers CORS (solo mismo origen, e.g. tras el proxy) |
+| `NEXT_PUBLIC_API_URL` | *(vacío)* | **build time** | URL absoluta del backend para un front separado, e.g. `http://localhost:3100` |
+
+El backend documenta la superficie completa como OpenAPI 3.1: `GET
+/api/openapi` (servido por el propio servidor, disponible en modo `api` —
+cualquier UI o fork puede consumir el contrato sin leer el código).
 
 ## Cómo funciona
 
@@ -154,18 +211,11 @@ persistente es el que ya gestiona la propia Copilot CLI.
   servidor web estos detalles desaparecen, la transcripción en sí se repite completa.
 - El dashboard solo es una sesión profunda en la CLI (`/session rename`) y los
   errores de la CLI se muestran tal cual.
-- **Sin autenticación ni autorización (authN/authZ)** en la UI web de momento —
-  cualquiera que alcance el puerto tiene acceso completo a tu Copilot. Una capa
-  básica de auth de usuario único está en el roadmap; hasta entonces, haz bind
-  a localhost o ponla detrás de tu propio proxy.
 
 ## Hoja de ruta
 
-Trabajo planificado (ninguno bloquea el lanzamiento de la beta; la versión
-siempre se mantendrá en semver de 3 dígitos, `v0.0.x` durante la beta — el
-lanzamiento oficial de la beta será `v0.1.x`):
+Trabajo planificado (beta oficial = serie `v0.1.x`):
 
-- **Auth básica (authN/authZ)** — login de usuario único para la UI web.
 - **Buscador de sesiones** — filtrar sesiones por título desde el sidebar.
 - **Mensajes encolados durante el turno** — sigue escribiendo mientras corre
   un turno: los mensajes nuevos se encolan y se intercalan en la conversación
@@ -178,5 +228,3 @@ lanzamiento oficial de la beta será `v0.1.x`):
 ## Licencia
 
 GPL-3.0
-- **Renderizado de creación/edición de ficheros** — mostrar los cambios
-  de ficheros como lo hace el CLI de Copilot (contenido y diffs unificados).

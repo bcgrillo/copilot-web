@@ -319,4 +319,11 @@ describe("POST /api/chat/ — SSE turn", () => {
 
 afterEach(() => {
   acp.runningTurns.clear();
+  vi.unstubAllEnvs();
+});
+
+// these tests exercise validation/SSE only — the bearer guard (auth.test.ts)
+// is bypassed here
+beforeEach(() => {
+  vi.stubEnv("NO_AUTH", "1");
 });

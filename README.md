@@ -14,7 +14,7 @@
   <a href="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/bcgrillo/copilot-web/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/actions"><img alt="Beta" src="https://img.shields.io/badge/status-beta-orange.svg?style=flat-square" /></a>
   <a href="https://github.com/bcgrillo/copilot-web/issues"><img alt="Issues" src="https://img.shields.io/github/issues/bcgrillo/copilot-web?style=flat-square&label=issues" /></a>
-  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.2-blue.svg?style=flat-square" /></a>
+  <a href="https://github.com/bcgrillo/copilot-web/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.1.4-blue.svg?style=flat-square" /></a>
 </p>
 
 <p align="center">
@@ -62,6 +62,8 @@ and your platform.
   history is replayed from ACP (`session/load`). Nothing is written to disk.
 - **EN/ES interface** — English by default with Spanish auto-detected (browser language);
   operators can pin it at startup with `--lang es`.
+- **Login + bearer auth** — password-protected UI with short-lived access
+  tokens and single-use rotating refresh tokens (see Authentication below).
 
 ## Requirements
 
@@ -104,6 +106,11 @@ there is nothing to do; otherwise write them once in `.env.local`.
 
 ## CLI options
 
+The installer symlinks the launcher into `~/.local/bin/copilot-web`, so the
+commands below work from any directory. Alternatives: `npm i -g .` installs the
+command globally, or run it from a checkout with
+`node copilot-web/bin/copilot-web.mjs`.
+
 | Option | Default | Description |
 | --- | --- | --- |
 | `--port <n>` | `3100` | Web server port |
@@ -115,12 +122,61 @@ there is nothing to do; otherwise write them once in `.env.local`.
 | `--build` | off | Run `next build` before starting |
 | `--no-daemon` | off | Expect a running daemon, do not spawn it |
 | `--no-helper` | off | Do not register the web `ask_user` MCP helper with the daemon (helper applies to freshly spawned daemons; reuse prints a warning) |
+| `--no-auth` | off | Run this server instance with authentication disabled (default: auth ON) |
+| `--add-user <u> [--password <pw>]` | — | Create a UI user (password prompted if omitted); weak passwords get a warning, not a block |
+| `--set-password <u> [--password <pw>]` | — | Change a user's password (revokes its sessions) |
+| `--del-user <u>` | — | Remove a user (and revoke its sessions) |
+| `--list-users` | — | List usernames (credentials are never shown) |
+| `--revoke <u>` / `--revoke-all` | — | Revoke one user's / every user's tokens immediately |
+| `--helper-token` | — | Print the MCP helper internal token (for `COPILOT_WEB_TOKEN`) |
 
 By default **no extra flags** are passed: `copilot --acp` asks for permission
 over ACP on restricted tools, and the web shows an allow/deny card for each
 request. The special value `--copilot-args "allow-all"` is translated to
 `--allow-all-tools --allow-all-urls --allow-all-paths` (no permission prompts).
 Pass your own flags to restrict the agent further.
+
+## Authentication
+
+Authentication is **enabled by default**; the server refuses to start with
+zero configured users (use `--no-auth` to opt out of auth for a specific
+instance, e.g. a throwaway container):
+
+```bash
+copilot-web --add-user admin --password s3cret   # user stored scrypt-hashed
+copilot-web                                      # auth on, login screen shown
+copilot-web --no-auth                            # auth off for this instance
+```
+
+- The UI shows a login screen; the browser then calls every endpoint with an
+  `Authorization: Bearer <access>` header.
+- Login issues a short-lived **access token** (15 min) plus a **single-use
+  refresh token** (90 days, rotated on every refresh; refreshing with an
+  already-used refresh token revokes the rotated chain — detection of reuse).
+- Passwords are scrypt-hashed with a per-user salt and an HMAC pepper whose
+  key (`~/.copilot-web/auth.json`, `chmod 600`) is generated on first use.
+  Deleting that file revokes every login. Tokens survive server restarts.
+- `--set-password`, `--revoke`, `--revoke-all` and `--del-user` invalidate
+  tokens immediately.
+- The MCP `ask_user` helper authenticates itself with a permanent internal
+  token (injected automatically into the helper config by the launcher).
+- Endpoints exempt from the bearer guard: `/api/login`, `/api/auth/state`,
+  `/api/auth/refresh` and `/api/openapi` (the API docs).
+
+## Split deployments (back + front)
+
+The same build can run as one server, a backend-only API, or a frontend-only
+UI — pick with `APP_MODE`:
+
+| Env | Default | Applies to | Description |
+| --- | --- | --- | --- |
+| `APP_MODE` | `all` | server | `all` = UI + API (self-host monolith) · `api` = backend container (UI answers 404) · `front` = pure frontend (`/api/*` answers 404) |
+| `CORS_ALLOW_ORIGIN` | *(none)* | server | Cross-origin access to `/api/*` from a separate front: one exact origin, comma-separated list, or `*`. Unset = no CORS headers (same-origin only, e.g. behind the proxy) |
+| `NEXT_PUBLIC_API_URL` | *(empty)* | **build time** | Absolute backend URL for a separate frontend, e.g. `http://localhost:3100` |
+
+The backend documents the whole surface as OpenAPI 3.1: `GET /api/openapi`
+(served by the server itself, works in `api` mode — any UI or fork can
+consume the contract without reading the source).
 
 ## How it works
 
@@ -153,16 +209,11 @@ is what the Copilot CLI itself already manages.
   transcript itself is fully replayed.
 - The dashboard is only one session deep in the CLI (`/session rename`) and
   errors from the CLI surface verbatim.
-- **No authentication or authorization (authN/authZ)** on the web UI yet — anyone
-  who can reach the port gets full Copilot access. A basic single-user auth layer
-  is on the roadmap; until then, bind to localhost or put it behind your own proxy.
 
 ## Roadmap
 
-Planned work (none of it blocks the beta launch; versions stay 3-digit semver,
-`v0.0.x` while in beta — the official beta release will be `v0.1.x`):
+Planned work (official beta = the `v0.1.x` series):
 
-- **Basic auth (authN/authZ)** — single-user login for the web UI.
 - **Session search** — filter sessions by title from the sidebar.
 - **Queued user messages** — keep typing while a turn is running: new messages
   are queued and interleaved into the ongoing conversation, like the Copilot CLI.

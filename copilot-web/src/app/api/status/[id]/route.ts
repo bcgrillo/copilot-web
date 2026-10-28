@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 /** Session working state for the status-bar: cwd (+ git branch on the fly
  * with standard git) and, if --model was passed to the launcher, the
  * declared model. The model is NOT read from ACP (1.0.80 does not expose it
@@ -23,9 +24,11 @@ const git = (cwd: string, ...args: string[]) =>
   );
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const g = guardApi(req);
+  if (g) return g;
   const { id } = await params;
   const s = await findSession(id);
   if (!s) return Response.json({ error: "Session not found" }, { status: 404 });

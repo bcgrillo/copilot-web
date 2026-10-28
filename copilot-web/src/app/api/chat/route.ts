@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
@@ -73,6 +74,8 @@ async function buildPromptBlocks(
 }
 
 export async function POST(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   const body = await req.json().catch(() => null);
   const sessionId: string | undefined = body?.sessionId;
   const message: string | undefined = body?.message;

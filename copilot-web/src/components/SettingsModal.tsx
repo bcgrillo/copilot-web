@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BellRing, Moon, RotateCw, Sun, SunMoon } from "lucide-react";
 import ModalShell from "@/components/ModalShell";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, authFetch } from "@/lib/api";
 import { ACCENTS, accentColor } from "@/lib/accents";
 import { syncThemeAndFavicon } from "@/lib/cw";
 import {
@@ -139,7 +139,7 @@ export default function SettingsModal({
   const [restarting, setRestarting] = useState(false);
   const refreshDaemon = useCallback(async () => {
     try {
-      const r = await fetch(apiUrl("/api/daemon"), { cache: "no-store" });
+      const r = await authFetch(apiUrl("/api/daemon"), { cache: "no-store" });
       if (!r.ok) throw new Error();
       const j = (await r.json()) as Daemon;
       setDaemon(j);
@@ -158,7 +158,7 @@ export default function SettingsModal({
   const restartDaemon = async () => {
     setRestarting(true);
     try {
-      const r = await fetch(apiUrl("/api/daemon"), {
+      const r = await authFetch(apiUrl("/api/daemon"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "restart" }),

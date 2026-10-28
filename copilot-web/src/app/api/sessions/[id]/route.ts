@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 import { findSession, reconcile } from "@/lib/copilotStore";
 import { remove, rename } from "@/lib/store";
 import {
@@ -24,7 +25,9 @@ type Params = { params: Promise<{ id: string }> };
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
+  const g = guardApi(req);
+  if (g) return g;
   const { id } = await params;
   const session = (await reconcile()).find((s) => s.id === id);
   if (!session)
@@ -56,6 +59,8 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
+  const g = guardApi(req);
+  if (g) return g;
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const raw = String(body?.name ?? "").trim();
@@ -154,7 +159,9 @@ export async function PATCH(req: Request, { params }: Params) {
   });
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
+  const g = guardApi(req);
+  if (g) return g;
   const { id } = await params;
   const session: SessionSummary | undefined = await findSession(id);
   if (!session)

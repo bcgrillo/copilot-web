@@ -1,3 +1,4 @@
+import { guardApi } from "@/lib/apiMode";
 import { create } from "@/lib/store";
 import { reconcile } from "@/lib/copilotStore";
 import { createAgentSession, CHAT_CWD } from "@/lib/acp";
@@ -5,11 +6,15 @@ import { createAgentSession, CHAT_CWD } from "@/lib/acp";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   return Response.json({ sessions: await reconcile() });
 }
 
 export async function POST(req: Request) {
+  const g = guardApi(req);
+  if (g) return g;
   let name: string | undefined;
   try {
     const body = await req.json();
